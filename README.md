@@ -31,11 +31,11 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 ## 当前状态
 
 - 文档：PRD 已定稿，技术方案与开发计划已按独立评审意见修订。
-- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**已完成。
+- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**、**T401–T404 E1 响应 / SSR 卡片页 / join / discover** 已完成。
 - 主人端 API：`/api/host/status|setup|login|logout|me|pin`、`/api/room/:id`、`PATCH /api/room/:id/status|network`、`POST /api/dolls/:id/backup-token`（登录页 UI 在 T901 接入）。
-- 客人端 API：`POST /api/play/shortcode`、`GET /api/cards/:dollId/qr.png`、`GET /api/cards/welcome.png`。
-- 已验证：`typecheck`、`lint`、`test`（36 个用例）、`build`、`start`、`dev`；生产形态完成「setup → 会话 → 房间 → 二维码 / 短码」冒烟。
-- 下一步：T401/T402 E1 全量响应 + SSR 卡片页 → T403/T404 discover 幂等与会话恢复。
+- 客人端 API：`POST /api/guests/join|resume`、`GET /api/play/d/:token`、`POST /api/play/discover`、`POST /api/play/shortcode`、`GET /api/assets/:doll/:kind?t=<ticket>`、`GET /api/cards/:dollId/qr.png`、`GET /api/cards/welcome.png`；SSR：`/join`、`/d/:token`（含无 JS 收藏表单）。
+- 已验证：`typecheck`、`lint`、`test`（46 个用例）、`build`、`start`、`dev`；生产形态完成「setup → 开局 → join → SSR 卡片 → 无效卡错误页」冒烟。
+- 下一步：T701/T702 判题与 secret_ticket → T801/T802 终局判定与 API → T501–T506 E1 特效引擎。
 
 ## 目录结构
 

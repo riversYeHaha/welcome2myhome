@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import formbody from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
 import Fastify, {
   type FastifyError,
@@ -10,7 +11,9 @@ import type { AppConfig } from './config';
 import type { Db } from './db';
 import { AppError } from './lib/errors';
 import { buildLoggerOptions } from './lib/logger';
+import { assetRoutes } from './routes/assets';
 import { cardRoutes } from './routes/cards';
+import { guestPages } from './routes/guest-pages';
 import { healthRoutes } from './routes/health';
 import { hostRoutes } from './routes/host';
 import { playRoutes } from './routes/play';
@@ -90,10 +93,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return reply.code(404).type('text/plain; charset=utf-8').send('Not Found');
   });
 
+  await app.register(formbody);
+
   await app.register(healthRoutes, { version });
   await app.register(hostRoutes, { config, db, secret });
   await app.register(cardRoutes, { db });
-  await app.register(playRoutes, { db });
+  await app.register(playRoutes, { config, db, secret });
+  await app.register(guestPages, { config, db, secret });
+  await app.register(assetRoutes, { config, db, secret });
 
   const webRoot = config.paths.web;
   if (existsSync(join(webRoot, 'index.html'))) {

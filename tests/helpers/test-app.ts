@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app';
-import { loadConfig } from '../../src/server/config';
+import { ensureDataDirs, loadConfig, type AppConfig } from '../../src/server/config';
 import { openDatabase, type Db } from '../../src/server/db';
 import { migrate } from '../../src/server/db/migrate';
 
@@ -15,6 +15,7 @@ export interface TestApp {
   app: FastifyInstance;
   db: Db;
   dir: string;
+  config: AppConfig;
 }
 
 export async function makeTestApp(): Promise<TestApp> {
@@ -23,10 +24,27 @@ export async function makeTestApp(): Promise<TestApp> {
   const db = openDatabase(dbPath);
   migrate(db, { dbPath, backupDir: join(dir, 'backups') });
 
-  const config = loadConfig({ rootDir: repoRoot, env: {} });
+  const baseConfig = loadConfig({ rootDir: repoRoot, env: {} });
+  const dataDir = join(dir, 'data');
+  const config: AppConfig = {
+    ...baseConfig,
+    paths: {
+      ...baseConfig.paths,
+      root: dir,
+      data: dataDir,
+      photos: join(dataDir, 'photos'),
+      models: join(dataDir, 'models'),
+      silhouettes: join(dataDir, 'silhouettes'),
+      exports: join(dataDir, 'exports'),
+      logs: join(dataDir, 'logs'),
+      backups: join(dataDir, 'backups'),
+      gen: join(dataDir, 'gen'),
+    },
+  };
+  ensureDataDirs(config.paths);
   const app = await buildApp({ config, db, secret: randomBytes(32), logger: false });
 
-  return { app, db, dir };
+  return { app, db, dir, config };
 }
 
 export function cookieOf(response: { headers: Record<string, unknown> }): string {
