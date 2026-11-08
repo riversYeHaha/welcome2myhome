@@ -7,6 +7,7 @@ import { getDoll, listDolls } from '../db/repos/dolls';
 import {
   createRoom,
   getRoomById,
+  setRoomFinaleJson,
   setRoomHostPinHash,
   setRoomLanIp,
   setRoomStatus,
@@ -17,6 +18,12 @@ import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
 import { LoginThrottle } from '../lib/login-throttle';
 import { isUniqueViolation } from '../lib/sqlite';
+import {
+  FinaleInputSchema,
+  dollCount,
+  eggQuizDollCount,
+  parseFinaleConfig,
+} from '../services/finale';
 import { issueBackupToken } from '../services/cards';
 import {
   clearSessionCookie,
@@ -82,6 +89,7 @@ function roomView(room: RoomRow) {
     default_level_type: room.default_level_type,
     lan_ip: room.lan_ip,
     port: room.port,
+    finale: parseFinaleConfig(room.finale_json),
   };
 }
 
@@ -215,6 +223,69 @@ export async function hostRoutes(
     if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
 
     return { room: roomView(room), dolls: listDolls(options.db, id) };
+  });
+
+  app.patch('/api/room/:id/finale', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    if (id !== session.roomId) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const input = parseBody(FinaleInputSchema, request.body);
+    const room = getRoomById(options.db, id);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const total = dollCount(options.db, id);
+    if (input.trigger.type === 'count_gte' && input.trigger.value > total) {
+      throw new AppError('VALIDATION_FAILED', 422, `触发人数不能超过房间人偶数（${total}）`);
+    }
+
+    const previous = parseFinaleConfig(room.finale_json);
+    const finale = {
+      ...input,
+      trigger: {
+        type: input.trigger.type,
+        value: input.trigger.type === 'count_gte' ? input.trigger.value : null,
+      },
+      opened_at:
+        input.trigger.type === 'manual' ? previous.opened_at : null,
+    };
+
+    const updated = setRoomFinaleJson(options.db, id, JSON.stringify(finale));
+    const warning =
+      input.trigger.type === 'all_eggs' && eggQuizDollCount(options.db, id) === 0
+        ? '当前没有任何彩蛋题，all_eggs 将等价于 all_collected'
+        : undefined;
+
+    return {
+      finale: parseFinaleConfig(updated?.finale_json ?? JSON.stringify(finale)),
+      ...(warning ? { warning } : {}),
+    };
+  });
+
+  app.post('/api/room/:id/finale/open', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    if (id !== session.roomId) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const room = getRoomById(options.db, id);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const finale = parseFinaleConfig(room.finale_json);
+    if (finale.trigger.type !== 'manual') {
+      throw new AppError('FINALE_NOT_MANUAL', 409, '终局不是手动模式，无需手动开启');
+    }
+
+    const next = {
+      ...finale,
+      opened_at: finale.opened_at ?? new Date().toISOString(),
+    };
+    const updated = setRoomFinaleJson(options.db, id, JSON.stringify(next));
+
+    return { finale: parseFinaleConfig(updated?.finale_json ?? JSON.stringify(next)) };
   });
 
   app.patch('/api/room/:id/network', async (request) => {

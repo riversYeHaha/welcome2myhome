@@ -1,3 +1,4 @@
+import { DEFAULT_FINALE_JSON } from '../../../shared/finale';
 import type { RoomStatus } from '../../../shared/contracts';
 import type { GameMode, LevelType } from '../../../shared/levels';
 import { generateRoomCode, newRoomId, nowIso } from '../../lib/ids';
@@ -18,14 +19,15 @@ export function createRoom(db: Db, input: CreateRoomInput): RoomRow {
 
   db.prepare(
     `INSERT INTO rooms
-       (room_id, room_code, title, game_mode, default_level_type, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)`,
+       (room_id, room_code, title, game_mode, default_level_type, status, finale_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
   ).run(
     roomId,
     input.roomCode ?? generateRoomCode(),
     input.title,
     input.gameMode ?? 'solo',
     input.defaultLevelType ?? 'bonus_quiz',
+    DEFAULT_FINALE_JSON,
     now,
     now,
   );

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppConfig } from '../config';
 import type { Db } from '../db';
-import { createGuest } from '../db/repos/guests';
+import { createGuest, markFinaleReached } from '../db/repos/guests';
 import { getDoll, getDollByAnyToken, getDollByShortCode } from '../db/repos/dolls';
 import {
   getProgress,
@@ -26,6 +26,7 @@ import {
   readGuestToken,
   requireGuest,
 } from '../services/guest-auth';
+import { evaluateFinale } from '../services/finale';
 import { verifyAnswer } from '../services/judge';
 import { buildE1View, collectionSummary } from '../services/play';
 import { signTicket } from '../services/ticket';
@@ -243,12 +244,14 @@ export async function playRoutes(
     const updated = markCollected(options.db, room.room_id, session.guestId, doll.doll_id);
     const summary = collectionSummary(options.db, room.room_id, session.guestId);
 
+    const evaluation = evaluateFinale(options.db, room, session.guestId);
+    if (evaluation.reached) markFinaleReached(options.db, session.guestId);
+
     return {
       state: updated.state,
       already,
       collection: { found: summary.found, total: summary.total },
-      // Finale evaluation is implemented in T801; keep the wire shape stable.
-      finale: { reached: false, remaining: summary.remaining },
+      finale: { reached: evaluation.reached, remaining: evaluation.progress.remaining },
     };
   });
   app.post('/api/play/egg/start', async (request) => {
@@ -410,10 +413,13 @@ export async function playRoutes(
       ttlSec: options.config.ticket.ttlSec,
     });
     const summary = collectionSummary(options.db, room.room_id, session.guestId);
+    const evaluation = evaluateFinale(options.db, room, session.guestId);
+    if (evaluation.reached) markFinaleReached(options.db, session.guestId);
 
     return {
       ...secretResponse(doll, ticket),
       collection: { found: summary.found, total: summary.total, eggs: summary.eggs },
+      finale: { reached: evaluation.reached, remaining: evaluation.progress.remaining },
     };
   });
 

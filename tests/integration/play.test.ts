@@ -187,7 +187,7 @@ describe('discover', () => {
     expect(firstBody.state).toBe('collected');
     expect(firstBody.already).toBe(false);
     expect(firstBody.collection).toEqual({ found: 1, total: 1 });
-    expect(firstBody.finale).toEqual({ reached: false, remaining: 0 });
+    expect(firstBody.finale).toEqual({ reached: true, remaining: 0 });
 
     const second = await booted.context.app.inject({
       method: 'POST',

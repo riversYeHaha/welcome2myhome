@@ -13,6 +13,7 @@ import { AppError } from './lib/errors';
 import { buildLoggerOptions } from './lib/logger';
 import { assetRoutes } from './routes/assets';
 import { cardRoutes } from './routes/cards';
+import { finaleRoutes } from './routes/finale';
 import { guestPages } from './routes/guest-pages';
 import { healthRoutes } from './routes/health';
 import { hostRoutes } from './routes/host';
@@ -100,6 +101,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   await app.register(cardRoutes, { db });
   await app.register(playRoutes, { config, db, secret });
   await app.register(guestPages, { config, db, secret });
+  await app.register(finaleRoutes, { db, secret });
   await app.register(assetRoutes, { config, db, secret });
 
   const webRoot = config.paths.web;
