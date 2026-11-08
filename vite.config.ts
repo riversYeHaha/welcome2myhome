@@ -20,10 +20,15 @@ export default defineConfig({
         main: fromRoot('./src/web/index.html'),
         host: fromRoot('./src/web/host/index.html'),
         effect: fromRoot('./src/web/guest/effect.ts'),
+        print: fromRoot('./src/web/print.ts'),
       },
       output: {
         entryFileNames: (chunk) =>
-          chunk.name === 'effect' ? 'effect.js' : 'assets/[name]-[hash].js',
+          chunk.name === 'effect'
+            ? 'effect.js'
+            : chunk.name === 'print'
+              ? 'print.js'
+              : 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
       },

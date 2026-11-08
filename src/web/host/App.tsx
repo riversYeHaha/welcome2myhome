@@ -241,6 +241,14 @@ export function App(): JSX.Element {
         <div className="panel-head">
           <h2>房间</h2>
           <div className="row">
+            <a
+              className="button ghost"
+              href="/api/cards/print"
+              target="_blank"
+              rel="noreferrer"
+            >
+              打印卡片
+            </a>
             {canLive ? (
               <button type="button" disabled={busy} onClick={() => void act(() => hostApi.setStatus(room.room_id, 'live'), '已开局')}>
                 开局 / 继续

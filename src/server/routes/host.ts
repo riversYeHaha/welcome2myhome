@@ -33,6 +33,7 @@ import {
   parseFinaleConfig,
 } from '../services/finale';
 import { createDollWithCard, issueBackupToken } from '../services/cards';
+import { renderCardsPrintPage } from '../views/cards-print';
 import { hashAnswer, normalizeAnswer } from '../services/judge';
 import {
   clearSessionCookie,
@@ -340,6 +341,18 @@ export async function hostRoutes(
     if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
 
     return { room: roomView(room), dolls: listDolls(options.db, id).map(dollView) };
+  });
+
+  app.get('/api/cards/print', async (request, reply) => {
+    const session = requireHost(request, deps);
+    const room = getRoomById(options.db, session.roomId);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const dolls = listDolls(options.db, session.roomId).map(dollView);
+    return reply
+      .type('text/html; charset=utf-8')
+      .header('cache-control', 'no-store')
+      .send(renderCardsPrintPage(roomView(room), dolls));
   });
 
   app.post('/api/dolls', async (request) => {
