@@ -1,0 +1,42 @@
+{
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "allowLanAdmin": false,
+    "corsAllowlist": []
+  },
+  "room": {
+    "defaultGameMode": "solo",
+    "defaultLevelType": "bonus_quiz"
+  },
+  "ticket": {
+    "ttlSec": 60,
+    "secretFile": "data/secret.key"
+  },
+  "judge": {
+    "scrypt": { "N": 16384, "r": 8, "p": 1 },
+    "burstPer30s": 6,
+    "perGuestPerMin": 30
+  },
+  "effects": {
+    "particleTiers": [120, 60, 24],
+    "watchdogMs": 300
+  },
+  "generation": {
+    "provider": "manual",
+    "endpoint": "",
+    "blenderEnabled": false,
+    "blenderPath": "",
+    "timeoutSec": 300
+  },
+  "cards": {
+    "page": "A4",
+    "cardWidthMm": 80,
+    "cardHeightMm": 120,
+    "perPage": 4
+  },
+  "logging": {
+    "level": "info",
+    "retainDays": 14
+  }
+}
