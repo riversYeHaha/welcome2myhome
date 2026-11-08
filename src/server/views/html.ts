@@ -76,6 +76,23 @@ ${options.script ? `<script type="module" src="${escapeHtml(options.script)}"></
 .e1-sound{position:fixed;left:16px;bottom:16px;z-index:30;padding:8px 14px;border-radius:999px;border:1px solid rgba(229,181,103,.5);background:rgba(27,21,18,.85);color:var(--gold);font-size:12px;cursor:pointer}
 .e1-ready .card .hook{opacity:0}
 .e1-ready .card[data-e1="settled"] .hook{opacity:1;transition:opacity .3s ease}
+
+/* --- collection / finale (T603) --- */
+.guest.collection{width:min(760px,100%)}
+.collection-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:20px 0}
+.collect-card{padding:10px;border:1px solid #3a2c23;border-radius:14px;background:rgba(36,28,23,.85);text-align:center}
+.collect-card.locked{opacity:.62}
+.silhouette.small{width:100%;height:120px;margin:0 0 8px;border-radius:12px}
+.collection-grid h2{font-size:15px;margin:4px 0}
+.collection-grid .tagline{font-size:12px;margin:2px 0}
+.collection-grid .story{font-size:12px;margin:4px 0;max-height:3.6em;overflow:hidden}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(229,181,103,.15);color:var(--gold);font-size:11px}
+.star{color:var(--gold)}
+.finale-teaser{margin-top:18px;padding:16px;border:1px solid #3a2c23;border-radius:14px;background:var(--panel)}
+.finale-teaser h2{margin:0 0 6px;font-size:15px}
+.finale-image{max-width:100%;border-radius:14px;margin:12px 0}
+.reward{margin:14px 0;padding:10px;border:1px dashed rgba(229,181,103,.5);border-radius:10px;color:var(--gold);font-size:14px}
+.finale h1{font-size:clamp(24px,7vw,36px)}
 `;
 }
 
