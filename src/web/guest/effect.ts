@@ -28,6 +28,32 @@ interface Particle {
 
 const COLLECTED_STATES = new Set(['collected', 'egg_answering', 'egg_unlocked']);
 
+interface RiddleView {
+  type: 'single_choice' | 'short_answer';
+  question: string;
+  options: string[];
+  hint: string;
+  wrong_text: string;
+  max_attempts: number;
+}
+
+interface SecretPayload {
+  story: string;
+  whisper: string;
+  star: boolean;
+  model_url: string | null;
+}
+
+interface AnswerResponse {
+  correct: boolean;
+  wrong_text?: string;
+  hint?: string;
+  attempts?: number;
+  max_attempts?: number;
+  secret?: SecretPayload;
+  error?: { message?: string };
+}
+
 const THEME_COLORS: Record<Theme, string[]> = {
   starlight: ['#ffe9b0', '#e5b567', '#fff6dd', '#ffd98a'],
   confetti: ['#f2c14e', '#e86a5a', '#6bbf8a', '#5b9bd5', '#d98acb'],
@@ -354,6 +380,286 @@ function init(root: HTMLElement): void {
     }
   }
 
+  let eggBound = false;
+
+  function element<K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    className: string,
+    text?: string,
+  ): HTMLElementTagNameMap[K] {
+    const node = document.createElement(tag);
+    node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function closePanel(): void {
+    document.querySelector('.egg-panel')?.remove();
+  }
+
+  function showMessage(text: string): void {
+    closePanel();
+    const panel = element('section', 'egg-panel');
+    panel.setAttribute('role', 'dialog');
+    panel.append(element('p', 'egg-eyebrow', '秘密彩蛋'));
+    panel.append(element('p', 'egg-question', text));
+    const close = element('button', 'egg-close', '收起');
+    close.type = 'button';
+    close.addEventListener('click', closePanel);
+    panel.append(close);
+    document.body.append(panel);
+  }
+
+  function updateEggButton(): void {
+    const button = root.querySelector<HTMLButtonElement>('.egg-open');
+    if (!button) return;
+    button.dataset.mode = 'secret';
+    button.textContent = '看 TA 的秘密';
+    button.hidden = false;
+  }
+
+  function showSecret(secret: SecretPayload): void {
+    closePanel();
+    const panel = element('section', 'egg-panel golden');
+    panel.setAttribute('role', 'dialog');
+    panel.append(element('p', 'egg-eyebrow', '秘密彩蛋'));
+    panel.append(element('h2', '', '原来你记得。'));
+    if (secret.story) {
+      const story = element('p', 'egg-secret-story', secret.story);
+      panel.append(story);
+    }
+    if (secret.whisper) {
+      panel.append(element('p', 'egg-whisper', secret.whisper));
+    }
+    if (secret.star) {
+      panel.append(element('p', 'egg-star', '★ 收藏册落下一颗星'));
+    }
+    if (secret.model_url) {
+      panel.append(element('p', 'egg-hint', '第二形态模型将在 T601 接入'));
+    }
+    const close = element('button', 'egg-close', '收起');
+    close.type = 'button';
+    close.addEventListener('click', closePanel);
+    panel.append(close);
+    document.body.append(panel);
+    updateEggButton();
+  }
+
+  async function openSecret(): Promise<void> {
+    const dollId = root.dataset.dollId;
+    if (!dollId) return;
+    try {
+      const response = await fetch(`/api/play/secret/${encodeURIComponent(dollId)}`, {
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) {
+        showMessage(
+          response.status === 403
+            ? '先答对 TA 的题，才能听到这段故事。'
+            : '故事暂时听不到，稍后再试。',
+        );
+        return;
+      }
+      const data = (await response.json()) as { secret: SecretPayload };
+      showSecret(data.secret);
+    } catch {
+      showMessage('网络好像断了，稍后再试。');
+    }
+  }
+
+  async function submitAnswer(
+    payload: Record<string, unknown>,
+    setEnabled: (enabled: boolean) => void,
+    feedback: HTMLElement,
+    hintButton: HTMLButtonElement,
+    hintText: HTMLParagraphElement,
+    attempts: HTMLElement,
+  ): Promise<void> {
+    const dollId = root.dataset.dollId;
+    if (!dollId) return;
+    setEnabled(false);
+    feedback.textContent = '正在听…';
+
+    try {
+      const response = await fetch('/api/play/answer', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ doll_id: dollId, ...payload }),
+      });
+      const data = (await response.json().catch(() => null)) as AnswerResponse | null;
+
+      if (!response.ok) {
+        feedback.textContent =
+          response.status === 429
+            ? '慢一点，歇口气再试。'
+            : data?.error?.message ?? '出了点问题，再试一次。';
+        setEnabled(true);
+        return;
+      }
+
+      if (data?.correct && data.secret) {
+        closePanel();
+        showSecret(data.secret);
+        return;
+      }
+
+      feedback.textContent = data?.wrong_text || '还差一点点，再想想。';
+      if (data?.hint) {
+        hintButton.hidden = false;
+        hintText.textContent = `提示：${data.hint}`;
+      }
+      if (typeof data?.attempts === 'number') {
+        attempts.textContent = `已试 ${data.attempts} 次${data.max_attempts ? ` / ${data.max_attempts}` : ' · 不限次数'}`;
+      }
+      setEnabled(true);
+    } catch {
+      feedback.textContent = '网络好像断了，再试一次。';
+      setEnabled(true);
+    }
+  }
+
+  async function skipQuiz(): Promise<void> {
+    const dollId = root.dataset.dollId;
+    if (!dollId) return;
+    try {
+      await fetch('/api/play/egg/skip', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ doll_id: dollId }),
+      });
+    } catch {
+      // Skipping is best-effort; the card stays collected either way.
+    }
+    closePanel();
+  }
+
+  async function openQuiz(): Promise<void> {
+    const token = root.dataset.token;
+    const dollId = root.dataset.dollId;
+    if (!token || !dollId) return;
+
+    closePanel();
+    let riddle: RiddleView | null = null;
+    try {
+      const response = await fetch(`/api/play/d/${encodeURIComponent(token)}`, {
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) {
+        showMessage('暂时听不到故事，稍后再试。');
+        return;
+      }
+      const data = (await response.json()) as { level?: { riddle?: RiddleView | null } };
+      riddle = data.level?.riddle ?? null;
+    } catch {
+      showMessage('网络好像断了，稍后再试。');
+      return;
+    }
+
+    if (!riddle) {
+      showMessage('这张卡没有彩蛋题。');
+      return;
+    }
+
+    void fetch('/api/play/egg/start', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ doll_id: dollId }),
+    });
+
+    const panel = element('section', 'egg-panel');
+    panel.setAttribute('role', 'dialog');
+    panel.append(element('p', 'egg-eyebrow', '再听听 TA 的故事'));
+    panel.append(element('p', 'egg-question', riddle.question));
+
+    const feedback = element('p', 'egg-feedback', '');
+    const hintText = element('p', 'egg-hint', '');
+    hintText.hidden = true;
+    const hintButton = element('button', 'egg-hint', '看提示');
+    hintButton.type = 'button';
+    hintButton.hidden = !riddle.hint;
+    hintButton.addEventListener('click', () => {
+      hintText.hidden = false;
+      hintButton.hidden = true;
+    });
+    const attempts = element('p', 'egg-feedback', '');
+    const actions = element('div', 'egg-actions');
+    const skip = element('button', '', '先跳过');
+    skip.type = 'button';
+    skip.addEventListener('click', () => void skipQuiz());
+    const close = element('button', 'egg-close', '收起');
+    close.type = 'button';
+    close.addEventListener('click', closePanel);
+    actions.append(hintButton, skip, close);
+
+    if (riddle.type === 'short_answer') {
+      const form = element('form', 'egg-input');
+      const input = element('input', '');
+      input.placeholder = '写下你的答案';
+      input.maxLength = 200;
+      const submit = element('button', '', '回答');
+      submit.type = 'submit';
+      form.append(input, submit);
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void submitAnswer(
+          { answer_text: input.value },
+          (enabled) => {
+            input.disabled = !enabled;
+            submit.disabled = !enabled;
+          },
+          feedback,
+          hintButton,
+          hintText,
+          attempts,
+        );
+      });
+      panel.append(form);
+    } else {
+      const options = element('div', 'egg-options');
+      for (const [index, option] of riddle.options.entries()) {
+        const button = element('button', 'egg-option', option);
+        button.type = 'button';
+        button.addEventListener('click', () => {
+          void submitAnswer(
+            { choice_index: index },
+            (enabled) => {
+              for (const child of options.querySelectorAll('button')) {
+                (child as HTMLButtonElement).disabled = !enabled;
+              }
+            },
+            feedback,
+            hintButton,
+            hintText,
+            attempts,
+          );
+        });
+        options.append(button);
+      }
+      panel.append(options);
+    }
+
+    panel.append(feedback, hintText, attempts, actions);
+    document.body.append(panel);
+  }
+
+  function revealEgg(): void {
+    if (preview) return;
+    const button = root.querySelector<HTMLButtonElement>('.egg-open');
+    if (!button) return;
+    button.hidden = false;
+    if (eggBound) return;
+    eggBound = true;
+    button.addEventListener('click', () => {
+      if (button.dataset.mode === 'secret') void openSecret();
+      else void openQuiz();
+    });
+  }
+
   function settle(): void {
     if (settled) return;
     settled = true;
@@ -364,6 +670,7 @@ function init(root: HTMLElement): void {
     addReplay();
     playSettle();
     void collect();
+    revealEgg();
   }
 
   function degrade(): void {

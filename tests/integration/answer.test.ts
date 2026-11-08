@@ -294,3 +294,72 @@ describe('egg quiz', () => {
     );
   });
 });
+
+describe('secret content and E2 entry', () => {
+  it('locks the secret endpoint until the egg is unlocked', async () => {
+    const booted = await boot();
+
+    const locked = await booted.context.app.inject({
+      method: 'GET',
+      url: `/api/play/secret/${booted.dollId}`,
+      headers: { cookie: booted.cookie },
+    });
+    expect(locked.statusCode).toBe(403);
+    expect(locked.json<{ error: { code: string } }>().error.code).toBe('EGG_LOCKED');
+
+    await startEgg(booted);
+    const answer = await booted.context.app.inject({
+      method: 'POST',
+      url: '/api/play/answer',
+      payload: { doll_id: booted.dollId, choice_index: 2 },
+      headers: { cookie: booted.cookie, 'content-type': 'application/json' },
+    });
+    expect(answer.statusCode).toBe(200);
+
+    const unlocked = await booted.context.app.inject({
+      method: 'GET',
+      url: `/api/play/secret/${booted.dollId}`,
+      headers: { cookie: booted.cookie },
+    });
+    expect(unlocked.statusCode).toBe(200);
+    const body = unlocked.json<{
+      secret_ticket: string;
+      secret: { story: string; whisper: string; star: boolean };
+    }>();
+    expect(body.secret_ticket).toMatch(/^t1\./);
+    expect(body.secret.story).toContain('关门');
+    expect(body.secret.whisper).toContain('谢谢你');
+    expect(body.secret.star).toBe(true);
+  });
+
+  it('renders a quiz entry but never the secret story in the card HTML', async () => {
+    const booted = await boot();
+
+    const before = await booted.context.app.inject({
+      method: 'GET',
+      url: `/d/${booted.cardToken}`,
+      headers: { cookie: booted.cookie },
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.body).toContain('data-mode="quiz"');
+    expect(before.body).toContain('再听听 TA 的故事');
+    expect(before.body).not.toContain('其实它最怕的不是雷');
+
+    await startEgg(booted);
+    await booted.context.app.inject({
+      method: 'POST',
+      url: '/api/play/answer',
+      payload: { doll_id: booted.dollId, choice_index: 2 },
+      headers: { cookie: booted.cookie, 'content-type': 'application/json' },
+    });
+
+    const after = await booted.context.app.inject({
+      method: 'GET',
+      url: `/d/${booted.cardToken}`,
+      headers: { cookie: booted.cookie },
+    });
+    expect(after.body).toContain('data-mode="secret"');
+    expect(after.body).toContain('看 TA 的秘密');
+    expect(after.body).not.toContain('其实它最怕的不是雷');
+  });
+});

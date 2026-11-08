@@ -38,6 +38,7 @@ export function renderCardPage(options: CardPageOptions): string {
   data-effect="${escapeHtml(view.level.e1.effect)}"
   data-sound="${view.level.e1.sound ? '1' : '0'}"
   data-state="${escapeHtml(view.progress.state)}"
+  data-token="${escapeHtml(token)}"
   data-preview="${preview ? '1' : '0'}">
   <p class="eyebrow">拆开一个彩蛋</p>
   ${silhouette}
@@ -46,7 +47,17 @@ export function renderCardPage(options: CardPageOptions): string {
   ${story}
   ${action}
   ${teaser}
-  <p class="foot">${preview ? '主人预览 · ' : ''}E1 特效将在 T501 接入 · 收藏册将在 T603 接入</p>
+  ${
+    view.level.riddle && view.progress.state !== 'egg_unlocked'
+      ? '<button type="button" class="egg-open" data-mode="quiz" hidden>再听听 TA 的故事</button>'
+      : ''
+  }
+  ${
+    view.progress.state === 'egg_unlocked'
+      ? '<button type="button" class="egg-open" data-mode="secret" hidden>看 TA 的秘密</button>'
+      : ''
+  }
+  <p class="foot">${preview ? '主人预览 · ' : ''}E1 特效 T501 · 收藏册 T603</p>
 </main>`;
 
   return renderPage({

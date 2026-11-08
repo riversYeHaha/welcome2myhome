@@ -114,19 +114,23 @@ function parseOptions(json: string): string[] {
   }
 }
 
+function secretPayload(doll: DollRow, ticket: string) {
+  return {
+    story: doll.secret_story,
+    whisper: doll.secret_whisper,
+    effect: doll.secret_effect,
+    star: doll.secret_star === 1,
+    model_url: doll.secret_model_url
+      ? `/api/assets/${encodeURIComponent(doll.doll_id)}/secret-model?t=${encodeURIComponent(ticket)}`
+      : null,
+  };
+}
+
 function secretResponse(doll: DollRow, ticket: string) {
   return {
     correct: true as const,
     secret_ticket: ticket,
-    secret: {
-      story: doll.secret_story,
-      whisper: doll.secret_whisper,
-      effect: doll.secret_effect,
-      star: doll.secret_star === 1,
-      model_url: doll.secret_model_url
-        ? `/api/assets/${encodeURIComponent(doll.doll_id)}/secret-model?t=${encodeURIComponent(ticket)}`
-        : null,
-    },
+    secret: secretPayload(doll, ticket),
   };
 }
 
@@ -316,6 +320,30 @@ export async function playRoutes(
       state: updated?.state ?? current.state,
       egg_skipped: updated?.egg_skipped === 1,
     };
+  });
+
+  app.get('/api/play/secret/:dollId', async (request) => {
+    const session = requireGuest(request, deps);
+    const { dollId } = request.params as { dollId: string };
+
+    const doll = getDoll(options.db, dollId);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('DOLL_NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const progress = getProgress(options.db, doll.room_id, session.guestId, doll.doll_id);
+    if (progress?.state !== 'egg_unlocked') {
+      throw new AppError('EGG_LOCKED', 403, '先答对 TA 的题，才能听到这段故事');
+    }
+
+    const ticket = signTicket(options.secret, {
+      scope: 'secret',
+      dollId: doll.doll_id,
+      guestId: session.guestId,
+      ttlSec: options.config.ticket.ttlSec,
+    });
+
+    return { secret_ticket: ticket, secret: secretPayload(doll, ticket) };
   });
 
   app.post('/api/play/answer', async (request, reply) => {

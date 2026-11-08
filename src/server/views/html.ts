@@ -93,6 +93,30 @@ ${options.script ? `<script type="module" src="${escapeHtml(options.script)}"></
 .finale-image{max-width:100%;border-radius:14px;margin:12px 0}
 .reward{margin:14px 0;padding:10px;border:1px dashed rgba(229,181,103,.5);border-radius:10px;color:var(--gold);font-size:14px}
 .finale h1{font-size:clamp(24px,7vw,36px)}
+
+/* --- E2 quiz & secret (T703/T704) --- */
+.egg-open{display:inline-block;margin-top:16px;padding:10px 18px;border-radius:999px;border:1px solid rgba(229,181,103,.55);background:transparent;color:var(--gold);font-size:14px;cursor:pointer}
+.egg-open[hidden]{display:none}
+.egg-panel{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);width:min(440px,calc(100vw - 28px));z-index:40;padding:18px;border-radius:16px;border:1px solid #4a382c;background:rgba(30,22,18,.97);box-shadow:0 18px 50px rgba(0,0,0,.45);text-align:left}
+.egg-panel h2{margin:4px 0 10px;font-size:18px}
+.egg-eyebrow{margin:0;font-size:11px;letter-spacing:.16em;color:var(--gold);text-transform:uppercase}
+.egg-question{margin:0 0 10px;font-size:14px;color:var(--ink)}
+.egg-options{display:flex;flex-direction:column;gap:6px}
+.egg-option{width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid #4a382c;background:#1a1310;color:var(--ink);font-size:14px;cursor:pointer}
+.egg-option:hover{border-color:var(--gold)}
+.egg-option:disabled{opacity:.5;cursor:wait}
+.egg-input{display:flex;gap:8px}
+.egg-input input{flex:1;margin-top:0}
+.egg-feedback{min-height:20px;margin:10px 0 0;font-size:13px;color:var(--dim)}
+.egg-actions{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.egg-actions button{padding:7px 14px;font-size:12px}
+.egg-close{margin-left:auto;background:transparent;border:1px solid #4a382c;color:var(--dim)}
+.egg-hint{color:var(--gold);font-size:12px;margin:8px 0 0}
+.egg-panel.golden{border-color:rgba(229,181,103,.8);animation:egg-gather .7s ease-out}
+@keyframes egg-gather{0%{box-shadow:0 0 0 18px rgba(229,181,103,0);transform:translateX(-50%) scale(1.03)}60%{box-shadow:0 0 0 2px rgba(229,181,103,.45),0 0 46px rgba(229,181,103,.35)}100%{box-shadow:0 18px 50px rgba(0,0,0,.45);transform:translateX(-50%) scale(1)}}
+.egg-secret-story{margin:8px 0;color:var(--dim);font-size:14px;line-height:1.7}
+.egg-whisper{margin:10px 0;padding:8px 10px;border-radius:10px;background:rgba(229,181,103,.08);color:var(--gold);font-size:13px}
+.egg-star{color:var(--gold);font-size:13px;margin-top:6px}
 `;
 }
 
