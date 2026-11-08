@@ -23,6 +23,7 @@ export function App(): JSX.Element {
   const [pin, setPin] = useState('');
   const [roomTitle, setRoomTitle] = useState('欢迎来到我的家');
   const [newDollName, setNewDollName] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -113,6 +114,69 @@ export function App(): JSX.Element {
       await refreshRoom();
       setEditingId(created.doll.doll_id);
       setNotice('人偶已创建，继续配置关卡与彩蛋题');
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadDoll(): Promise<void> {
+    const name = newDollName.trim();
+    if (!name) {
+      setError('先填写新成员的名字');
+      return;
+    }
+    if (!photoFile) {
+      setError('先选择一张照片');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      const result = await hostApi.uploadDoll(name, photoFile);
+      setNewDollName('');
+      setPhotoFile(null);
+      await refreshRoom();
+      setEditingId(result.doll.doll_id);
+      setNotice('照片已处理；请上传 GLB 模型，或配置 Lux3D 后重试');
+      void pollTask(result.task.task_id);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pollTask(taskId: string): Promise<void> {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const { task } = await hostApi.genTask(taskId);
+        if (task.status === 'done' || task.status === 'failed') {
+          await refreshRoom();
+          setNotice(
+            task.status === 'done'
+              ? '生成完成'
+              : `生成失败：${task.error ?? '请稍后重试'}`,
+          );
+          return;
+        }
+        setNotice(`照片处理中：${task.stage} ${task.percent}%`);
+      } catch {
+        return;
+      }
+    }
+  }
+
+  async function uploadModel(dollId: string, file: File): Promise<void> {
+    setBusy(true);
+    setError('');
+    try {
+      await hostApi.uploadModel(dollId, file);
+      await refreshRoom();
+      setNotice('GLB 模型已上传，3D 展柜立即可用');
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -280,15 +344,29 @@ export function App(): JSX.Element {
       <section className="panel">
         <div className="panel-head">
           <h2>人偶（{detail.dolls.length}）</h2>
-          <div className="inline">
+          <div className="create-doll">
             <input
               value={newDollName}
               onChange={(event) => setNewDollName(event.target.value)}
               placeholder="新成员名字"
               maxLength={30}
             />
+            <input
+              className="file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+              aria-label="上传照片"
+            />
             <button type="button" disabled={busy} onClick={() => void createDoll()}>
-              添加人偶
+              仅创建
+            </button>
+            <button
+              type="button"
+              disabled={busy || !photoFile}
+              onClick={() => void uploadDoll()}
+            >
+              上传照片生成
             </button>
           </div>
         </div>
@@ -307,6 +385,12 @@ export function App(): JSX.Element {
                   {doll.level_type === 'discovery' ? '纯发现' : '彩蛋题'}
                   {doll.egg_enabled ? ' · E2 已开' : ''}
                   {doll.answer_configured ? '' : ' · 答案未配置'}
+                  {' · '}
+                  {doll.gen_status === 'done'
+                    ? '模型已就绪'
+                    : doll.gen_status === 'queued'
+                      ? '等待 GLB'
+                      : `生成${doll.gen_status}`}
                 </p>
                 <img
                   className="qr"
@@ -334,6 +418,19 @@ export function App(): JSX.Element {
                   >
                     删除
                   </button>
+                  <label className="upload">
+                    上传 GLB
+                    <input
+                      type="file"
+                      accept=".glb,model/gltf-binary"
+                      disabled={busy}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        if (file) void uploadModel(doll.doll_id, file);
+                      }}
+                    />
+                  </label>
                 </div>
               </article>
             ))}

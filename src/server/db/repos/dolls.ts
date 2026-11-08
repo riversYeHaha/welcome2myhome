@@ -194,3 +194,38 @@ export function updateDollLevel(
 
   return getDoll(db, dollId);
 }
+
+export interface DollGenerationPatch {
+  genStatus?: DollRow['gen_status'];
+  genTaskId?: string | null;
+  sourcePhoto?: string | null;
+  baseModelUrl?: string;
+  silhouetteUrl?: string;
+}
+
+/** Persist generation bookkeeping fields without touching level content. */
+export function setDollGeneration(
+  db: Db,
+  dollId: string,
+  patch: DollGenerationPatch,
+): DollRow | undefined {
+  const current = getDoll(db, dollId);
+  if (!current) return undefined;
+
+  db.prepare(
+    `UPDATE dolls SET
+       gen_status = ?, gen_task_id = ?, source_photo = ?,
+       base_model_url = ?, silhouette_url = ?, updated_at = ?
+     WHERE doll_id = ?`,
+  ).run(
+    patch.genStatus ?? current.gen_status,
+    patch.genTaskId === undefined ? current.gen_task_id : patch.genTaskId,
+    patch.sourcePhoto === undefined ? current.source_photo : patch.sourcePhoto,
+    patch.baseModelUrl ?? current.base_model_url,
+    patch.silhouetteUrl ?? current.silhouette_url,
+    nowIso(),
+    dollId,
+  );
+
+  return getDoll(db, dollId);
+}

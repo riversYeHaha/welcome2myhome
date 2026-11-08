@@ -23,6 +23,21 @@ export interface FinaleResponse {
   warning?: string;
 }
 
+export interface GenTask {
+  task_id: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  stage: string;
+  percent: number;
+  error: string | null;
+  fallback_used: boolean;
+  provider: string;
+}
+
+export interface UploadDollResponse {
+  doll: HostDoll;
+  task: GenTask;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -40,6 +55,35 @@ export function setCsrfToken(token: string): void {
   csrfToken = token;
 }
 
+async function readResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) return undefined as T;
+  const data = (await response.json().catch(() => null)) as
+    | { error?: { code?: string; message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      data?.error?.code ?? 'HTTP_ERROR',
+      data?.error?.message ?? `请求失败（${response.status}）`,
+    );
+  }
+  return data as T;
+}
+
+async function requestMultipart<T>(path: string, form: FormData): Promise<T> {
+  const headers = new Headers();
+  headers.set('accept', 'application/json');
+  if (csrfToken) headers.set('x-wtm-csrf', csrfToken);
+
+  const response = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers,
+    body: form,
+  });
+  return readResponse<T>(response);
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
@@ -53,21 +97,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers,
   });
 
-  if (response.status === 204) return undefined as T;
-
-  const data = (await response.json().catch(() => null)) as
-    | { error?: { code?: string; message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      data?.error?.code ?? 'HTTP_ERROR',
-      data?.error?.message ?? `请求失败（${response.status}）`,
-    );
-  }
-
-  return data as T;
+  return readResponse<T>(response);
 }
 
 export const hostApi = {
@@ -100,6 +130,18 @@ export const hostApi = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  uploadDoll: (name: string, photo: File) => {
+    const form = new FormData();
+    form.append('name', name);
+    form.append('photo', photo);
+    return requestMultipart<UploadDollResponse>('/api/dolls/upload', form);
+  },
+  uploadModel: (dollId: string, model: File) => {
+    const form = new FormData();
+    form.append('model', model);
+    return requestMultipart<{ doll: HostDoll }>(`/api/dolls/${dollId}/asset`, form);
+  },
+  genTask: (taskId: string) => request<{ task: GenTask }>(`/api/gen/${taskId}`),
   deleteDoll: (dollId: string) =>
     request<void>(`/api/dolls/${dollId}`, { method: 'DELETE' }),
   setStatus: (roomId: string, status: 'live' | 'paused' | 'ended') =>

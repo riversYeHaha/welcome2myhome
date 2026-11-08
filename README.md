@@ -31,14 +31,15 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 ## 当前状态
 
 - 文档：PRD 已定稿，技术方案与开发计划已按独立评审意见修订。
-- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**、**T401–T404 E1 响应 / SSR 卡片页 / join / discover**、**T701–T705 判题 / answer / egg start·skip / secret ticket / 故障兜底**、**T801/T802 终局触发与 API**、**T901–T904/T906 主人端控制台**、**T501–T506 E1 特效引擎**、**T603 收藏册与终局页**、**T703/T704 E2 答题 UI 与 secret 接口**、**T1001 卡片打印页**、**T601 3D 人偶展柜** 已完成。
+- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**、**T401–T404 E1 响应 / SSR 卡片页 / join / discover**、**T701–T705 判题 / answer / egg start·skip / secret ticket / 故障兜底**、**T801/T802 终局触发与 API**、**T901–T904/T906 主人端控制台**、**T501–T506 E1 特效引擎**、**T603 收藏册与终局页**、**T703/T704 E2 答题 UI 与 secret 接口**、**T1001 卡片打印页**、**T601 3D 人偶展柜**、**T1201/T1202/T1205 照片上传与手动 GLB 生成链路** 已完成。
 - 主人端：`/host/` 控制台（PIN 初始化/登录、开局/暂停/结束、LAN 地址、欢迎码、人偶增删改、关卡与彩蛋题编辑、终局编辑、预览、卡片打印）；API：`/api/host/status|setup|login|logout|me|pin`、`/api/room/:id`、`PATCH /api/room/:id/status|network|finale`、`POST /api/room/:id/finale/open`、`POST|PATCH|DELETE /api/dolls`、`PATCH /api/dolls/:id/level`、`POST /api/dolls/:id/backup-token`、`GET /api/cards/print`（A4 4-up，浏览器打印/另存 PDF）。
 - 客人端 API：`POST /api/guests/join|resume`、`GET /api/play/d/:token`、`POST /api/play/discover`、`POST /api/play/egg/start|skip`、`POST /api/play/answer`、`GET /api/play/secret/:dollId`、`GET /api/collection`、`GET /api/finale/:room_id`、`POST /api/play/shortcode`、`GET /api/assets/:doll/:kind?t=<ticket>`、`GET /api/cards/:dollId/qr.png`、`GET /api/cards/welcome.png`；SSR：`/join`、`/d/:token`（含无 JS 收藏表单与 E2 答题面板）、`/collection`、`/finale`。
 - 已验证：`typecheck`、`lint`、`test`（81 个用例）、`build`、`start`、`dev`；生产形态完成「setup → 开局 → join → SSR 卡片 → E1 → E2 答题/secret → 收藏册 / 终局 / 卡片打印页」与 `/host/` 控制台冒烟。
 - 前端演出：`/effect.js` 约 11KB，覆盖 E1 时间轴/粒子/音效/降级与 E2 答题面板/金色收拢；真实设备视效与性能仍需 D3/D7 真机验收。
 - 卡片：A4 4-up 打印页（欢迎码 + 每卡二维码/短码/线索），浏览器打印或另存 PDF；服务端 PDF 生成留待后续。
 - 3D：`/viewer.js`（three.js，631KB / gzip 159KB）在卡片剪影与收藏册全屏查看中加载 GLB；暂无模型时显示程序化占位人偶，支持拖拽旋转/滚轮缩放，加载失败回退剪影。
-- 下一步：T1201–T1205 照片生成链路（含 DRACO 解码器自托管）→ 服务端 PDF / 真机验收。
+- 生成：上传照片（≤10MB）→ sharp 旋转/缩到 1536/剥离 EXIF → 生成任务 `awaiting_upload`；主人可上传 GLB 落盘并立即在 3D 展柜使用。Lux3D 自动生成、Blender 清理与 DRACO 压缩仍是下一步（需外部 API/工具链）。
+- 下一步：Lux3D 适配 / Blender headless / Draco 自托管 → 服务端 PDF / 真机验收。
 
 ## 目录结构
 

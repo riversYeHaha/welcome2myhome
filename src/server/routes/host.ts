@@ -24,6 +24,7 @@ import type { DollRow, RoomRow } from '../db/rows';
 import { hashSecret, verifySecret } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
+import { readMultipart } from '../lib/multipart';
 import { LoginThrottle } from '../lib/login-throttle';
 import { isUniqueViolation } from '../lib/sqlite';
 import {
@@ -33,6 +34,7 @@ import {
   parseFinaleConfig,
 } from '../services/finale';
 import { createDollWithCard, issueBackupToken } from '../services/cards';
+import { createDollFromPhoto, getGenerationTask, ingestDollModel } from '../services/generation';
 import { renderCardsPrintPage } from '../views/cards-print';
 import { hashAnswer, normalizeAnswer } from '../services/judge';
 import {
@@ -197,6 +199,26 @@ function dollView(doll: DollRow): HostDoll {
   };
 }
 
+function taskView(task: {
+  task_id: string;
+  status: string;
+  stage: string;
+  percent: number;
+  error: string | null;
+  fallback_used: number;
+  provider: string;
+}) {
+  return {
+    task_id: task.task_id,
+    status: task.status,
+    stage: task.stage,
+    percent: task.percent,
+    error: task.error,
+    fallback_used: task.fallback_used === 1,
+    provider: task.provider,
+  };
+}
+
 function roomView(room: RoomRow): HostRoom {
   return {
     room_id: room.room_id,
@@ -353,6 +375,58 @@ export async function hostRoutes(
       .type('text/html; charset=utf-8')
       .header('cache-control', 'no-store')
       .send(renderCardsPrintPage(roomView(room), dolls));
+  });
+
+  app.get('/api/gen/:taskId', async (request) => {
+    const session = requireHost(request, deps);
+    const { taskId } = request.params as { taskId: string };
+
+    const task = getGenerationTask(options.db, taskId);
+    if (!task || task.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '生成任务不存在');
+    }
+
+    return { task: taskView(task) };
+  });
+
+  app.post('/api/dolls/upload', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { fields, file } = await readMultipart(request);
+    const name = (fields.name ?? '').trim();
+    if (name.length === 0 || name.length > 30) {
+      throw new AppError('VALIDATION_FAILED', 422, '名字需要 1–30 个字');
+    }
+    if (!file) {
+      throw new AppError('VALIDATION_FAILED', 422, '缺少照片文件');
+    }
+
+    const result = await createDollFromPhoto(options.db, options.config, {
+      roomId: session.roomId,
+      name,
+      tagline: fields.tagline?.trim() || undefined,
+      photo: file.buffer,
+    });
+
+    return { doll: dollView(result.doll), task: taskView(result.task) };
+  });
+
+  app.post('/api/dolls/:id/asset', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const { file } = await readMultipart(request);
+    if (!file) throw new AppError('VALIDATION_FAILED', 422, '缺少 GLB 文件');
+
+    const updated = ingestDollModel(options.db, options.config, id, file.buffer);
+    return { doll: dollView(updated) };
   });
 
   app.post('/api/dolls', async (request) => {
