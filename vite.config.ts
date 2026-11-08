@@ -21,6 +21,7 @@ export default defineConfig({
         host: fromRoot('./src/web/host/index.html'),
         effect: fromRoot('./src/web/guest/effect.ts'),
         print: fromRoot('./src/web/print.ts'),
+        viewer: fromRoot('./src/web/guest/viewer.ts'),
       },
       output: {
         entryFileNames: (chunk) =>
@@ -28,7 +29,9 @@ export default defineConfig({
             ? 'effect.js'
             : chunk.name === 'print'
               ? 'print.js'
-              : 'assets/[name]-[hash].js',
+              : chunk.name === 'viewer'
+                ? 'viewer.js'
+                : 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
       },

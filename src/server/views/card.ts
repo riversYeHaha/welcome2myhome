@@ -13,9 +13,15 @@ export interface CardPageOptions {
 export function renderCardPage(options: CardPageOptions): string {
   const { view, token, collected, preview = false } = options;
 
-  const silhouette = view.silhouette_url
-    ? `<div class="silhouette"><img src="${escapeHtml(view.silhouette_url)}" alt="" /></div>`
-    : `<div class="silhouette" aria-hidden="true">剪影</div>`;
+  const silhouette = `<div class="silhouette"
+    data-doll-id="${escapeHtml(view.doll_id)}"
+    data-doll-model="${escapeHtml(view.base.model_url ?? '')}">
+    ${
+      view.silhouette_url
+        ? `<img src="${escapeHtml(view.silhouette_url)}" alt="" />`
+        : '<span aria-hidden="true">剪影</span>'
+    }
+  </div>`;
 
   const story = view.base.story
     ? `<p class="story">${escapeHtml(view.base.story).replace(/\n/g, '<br />')}</p>`
@@ -63,6 +69,6 @@ export function renderCardPage(options: CardPageOptions): string {
   return renderPage({
     title: `${view.name} · 欢迎来到我的家`,
     body,
-    script: '/effect.js',
+    scripts: ['/effect.js', '/viewer.js'],
   });
 }

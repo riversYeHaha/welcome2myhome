@@ -37,8 +37,8 @@ export function escapeHtml(value: string): string {
 export interface PageOptions {
   title: string;
   body: string;
-  /** Optional same-origin module script (e.g. the E1 effect engine). */
-  script?: string;
+  /** Same-origin module scripts, loaded after the body. */
+  scripts?: string[];
 }
 
 export function renderPage(options: PageOptions): string {
@@ -53,7 +53,7 @@ export function renderPage(options: PageOptions): string {
 </head>
 <body>
 ${options.body}
-${options.script ? `<script type="module" src="${escapeHtml(options.script)}"></script>` : ''}
+${(options.scripts ?? []).map((script) => `<script type="module" src="${escapeHtml(script)}"></script>`).join('\n')}
 </body>
 </html>
 /* --- E1 effect layer (T501–T506) --- */
@@ -117,6 +117,16 @@ ${options.script ? `<script type="module" src="${escapeHtml(options.script)}"></
 .egg-secret-story{margin:8px 0;color:var(--dim);font-size:14px;line-height:1.7}
 .egg-whisper{margin:10px 0;padding:8px 10px;border-radius:10px;background:rgba(229,181,103,.08);color:var(--gold);font-size:13px}
 .egg-star{color:var(--gold);font-size:13px;margin-top:6px}
+
+/* --- 3D doll viewer (T601) --- */
+.silhouette{position:relative;overflow:hidden}
+.silhouette canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+.silhouette.viewer-ready img,.silhouette.viewer-ready span{opacity:0}
+.view-doll{margin-top:8px;padding:6px 12px;border-radius:999px;border:1px solid rgba(229,181,103,.5);background:transparent;color:var(--gold);font-size:12px;cursor:pointer}
+.viewer-overlay{position:fixed;inset:0;z-index:60;background:rgba(10,8,6,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px}
+.viewer-stage{width:min(72vw,72vh);height:min(72vw,72vh);min-width:220px;min-height:220px}
+.viewer-title{margin:0;color:var(--ink);font-size:14px;letter-spacing:.08em}
+.viewer-close{padding:8px 18px;border-radius:999px;border:1px solid #4a382c;background:transparent;color:var(--gold);cursor:pointer}
 `;
 }
 

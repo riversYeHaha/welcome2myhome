@@ -199,6 +199,8 @@ describe('collection and finale pages', () => {
     expect(collection.body).toContain('收藏册');
     expect(collection.body).toContain('阿黄');
     expect(collection.body).toContain('还没见到');
+    expect(collection.body).toContain('/viewer.js');
+    expect(collection.body).toContain('class="view-doll"');
     expect(collection.body).not.toContain('answer_hash');
 
     const before = await booted.context.app.inject({

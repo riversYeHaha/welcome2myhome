@@ -27,6 +27,10 @@ export function renderCollectionPage(data: GuestCollection): string {
   ${item.tagline ? `<p class="tagline">${escapeHtml(item.tagline)}</p>` : ''}
   ${item.story ? `<p class="story">${escapeHtml(item.story)}</p>` : ''}
   <div class="badges">${egg}</div>
+  <button type="button" class="view-doll"
+    data-doll-id="${escapeHtml(item.doll_id)}"
+    data-name="${escapeHtml(item.name ?? '')}"
+    data-model-url="${escapeHtml(item.model_url ?? '')}">看看 TA</button>
 </article>`;
     })
     .join('');
@@ -49,5 +53,5 @@ export function renderCollectionPage(data: GuestCollection): string {
   <p class="foot"><a href="/">回首页</a></p>
 </main>`;
 
-  return renderPage({ title: '收藏册 · 欢迎来到我的家', body });
+  return renderPage({ title: '收藏册 · 欢迎来到我的家', body, scripts: ['/viewer.js'] });
 }
