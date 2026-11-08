@@ -37,7 +37,8 @@ export function renderCardPage(options: CardPageOptions): string {
   data-doll-id="${escapeHtml(view.doll_id)}"
   data-effect="${escapeHtml(view.level.e1.effect)}"
   data-sound="${view.level.e1.sound ? '1' : '0'}"
-  data-state="${escapeHtml(view.progress.state)}">
+  data-state="${escapeHtml(view.progress.state)}"
+  data-preview="${preview ? '1' : '0'}">
   <p class="eyebrow">拆开一个彩蛋</p>
   ${silhouette}
   <h1>${escapeHtml(view.name)}</h1>
@@ -48,5 +49,9 @@ export function renderCardPage(options: CardPageOptions): string {
   <p class="foot">${preview ? '主人预览 · ' : ''}E1 特效将在 T501 接入 · 收藏册将在 T603 接入</p>
 </main>`;
 
-  return renderPage({ title: `${view.name} · 欢迎来到我的家`, body });
+  return renderPage({
+    title: `${view.name} · 欢迎来到我的家`,
+    body,
+    script: '/effect.js',
+  });
 }

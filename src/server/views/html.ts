@@ -37,7 +37,8 @@ export function escapeHtml(value: string): string {
 export interface PageOptions {
   title: string;
   body: string;
-  statusHint?: string;
+  /** Optional same-origin module script (e.g. the E1 effect engine). */
+  script?: string;
 }
 
 export function renderPage(options: PageOptions): string {
@@ -52,8 +53,30 @@ export function renderPage(options: PageOptions): string {
 </head>
 <body>
 ${options.body}
+${options.script ? `<script type="module" src="${escapeHtml(options.script)}"></script>` : ''}
 </body>
-</html>`;
+</html>
+/* --- E1 effect layer (T501–T506) --- */
+.card{position:relative;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.e1-ready .card[data-e1="flip"]{transform:rotateY(-12deg) scale(.985)}
+.e1-ready .card[data-e1="burst"],.e1-ready .card[data-e1="dissolve"],.e1-ready .card[data-e1="reveal"],.e1-ready .card[data-e1="settled"]{transform:none}
+.e1-ready .card h1,.e1-ready .card .tagline,.e1-ready .card .story,.e1-ready .card form,.e1-ready .card .collected,.e1-ready .card .teaser{opacity:0;transform:translateY(8px);transition:opacity .4s ease,transform .4s ease}
+.e1-ready .card[data-e1="reveal"] h1,.e1-ready .card[data-e1="reveal"] .tagline,.e1-ready .card[data-e1="reveal"] .story,.e1-ready .card[data-e1="reveal"] form,.e1-ready .card[data-e1="reveal"] .collected,.e1-ready .card[data-e1="reveal"] .teaser,
+.e1-ready .card[data-e1="settled"] h1,.e1-ready .card[data-e1="settled"] .tagline,.e1-ready .card[data-e1="settled"] .story,.e1-ready .card[data-e1="settled"] form,.e1-ready .card[data-e1="settled"] .collected,.e1-ready .card[data-e1="settled"] .teaser{opacity:1;transform:none}
+.e1-ready .card .silhouette{transition:opacity .75s ease,transform 1s ease,filter .75s ease}
+.e1-ready .card[data-e1="dissolve"] .silhouette{opacity:.25;transform:translateY(-8px) scale(1.04);filter:blur(2px)}
+.e1-ready .card[data-e1="settled"] .silhouette{opacity:1;transform:none;filter:none}
+.e1-degraded .card h1,.e1-degraded .card .tagline,.e1-degraded .card .story,.e1-degraded .card form,.e1-degraded .card .collected,.e1-degraded .card .teaser{opacity:1!important;transform:none!important}
+.e1-sweep{position:absolute;inset:0;overflow:hidden;border-radius:18px;pointer-events:none}
+.e1-sweep::after{content:'';position:absolute;top:-60%;left:-70%;width:45%;height:220%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);transform:skewX(-18deg);animation:e1-sweep .55s ease-out forwards}
+@keyframes e1-sweep{to{left:125%}}
+.e1-particles{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
+.e1-skip{position:fixed;right:16px;bottom:16px;z-index:30;padding:8px 14px;border-radius:999px;border:1px solid #4a382c;background:rgba(27,21,18,.8);color:var(--dim);font-size:12px;cursor:pointer}
+.e1-replay{margin:14px auto 0;display:inline-block;padding:9px 18px;border-radius:999px;border:1px solid rgba(229,181,103,.5);background:transparent;color:var(--gold);font-size:14px;cursor:pointer}
+.e1-sound{position:fixed;left:16px;bottom:16px;z-index:30;padding:8px 14px;border-radius:999px;border:1px solid rgba(229,181,103,.5);background:rgba(27,21,18,.85);color:var(--gold);font-size:12px;cursor:pointer}
+.e1-ready .card .hook{opacity:0}
+.e1-ready .card[data-e1="settled"] .hook{opacity:1;transition:opacity .3s ease}
+`;
 }
 
 export function renderErrorPage(options: {

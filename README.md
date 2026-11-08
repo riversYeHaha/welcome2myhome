@@ -31,11 +31,12 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 ## 当前状态
 
 - 文档：PRD 已定稿，技术方案与开发计划已按独立评审意见修订。
-- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**、**T401–T404 E1 响应 / SSR 卡片页 / join / discover**、**T701–T705 判题 / answer / egg start·skip / secret ticket / 故障兜底**、**T801/T802 终局触发与 API**、**T901–T904/T906 主人端控制台** 已完成。
+- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**、**T401–T404 E1 响应 / SSR 卡片页 / join / discover**、**T701–T705 判题 / answer / egg start·skip / secret ticket / 故障兜底**、**T801/T802 终局触发与 API**、**T901–T904/T906 主人端控制台**、**T501–T506 E1 特效引擎** 已完成。
 - 主人端：`/host/` 控制台（PIN 初始化/登录、开局/暂停/结束、LAN 地址、欢迎码、人偶增删改、关卡与彩蛋题编辑、终局编辑、预览）；API：`/api/host/status|setup|login|logout|me|pin`、`/api/room/:id`、`PATCH /api/room/:id/status|network|finale`、`POST /api/room/:id/finale/open`、`POST|PATCH|DELETE /api/dolls`、`PATCH /api/dolls/:id/level`、`POST /api/dolls/:id/backup-token`。
 - 客人端 API：`POST /api/guests/join|resume`、`GET /api/play/d/:token`、`POST /api/play/discover`、`POST /api/play/egg/start|skip`、`POST /api/play/answer`、`GET /api/finale/:room_id`、`POST /api/play/shortcode`、`GET /api/assets/:doll/:kind?t=<ticket>`、`GET /api/cards/:dollId/qr.png`、`GET /api/cards/welcome.png`；SSR：`/join`、`/d/:token`（含无 JS 收藏表单）。
 - 已验证：`typecheck`、`lint`、`test`（72 个用例）、`build`、`start`、`dev`；生产形态完成「setup → 开局 → join → SSR 卡片 → 判题 / secret ticket / 终局（manual）」与 `/host/` 控制台冒烟。
-- 下一步：T501–T506 E1 特效引擎 → T603 收藏册 → T1201–T1205 照片生成链路 → T1001 卡片 PDF。
+- E1 特效：`npm run build` 产出 `/effect.js`（6KB / gzip 2.65KB），SSR 卡片页自动加载；真实设备视效与性能仍需 D3/D7 真机验收。
+- 下一步：T603 收藏册 → T601 3D 人偶展柜 → T1201–T1205 照片生成链路 → T1001 卡片 PDF。
 
 ## 目录结构
 

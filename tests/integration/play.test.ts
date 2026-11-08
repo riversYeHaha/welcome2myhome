@@ -228,6 +228,7 @@ describe('SSR card page and no-JS flow', () => {
     expect(page.body).toContain('阿黄');
     expect(page.body).toContain('2015');
     expect(page.body).toContain('收下 TA');
+    expect(page.body).toContain('/effect.js');
     expect(page.body).not.toContain('TOP_SECRET_HASH');
 
     const collect = await booted.context.app.inject({
