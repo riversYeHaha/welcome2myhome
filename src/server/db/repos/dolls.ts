@@ -1,4 +1,4 @@
-import type { LevelType } from '../../../shared/levels';
+import type { E1Effect, LevelType } from '../../../shared/levels';
 import { newDollId, nowIso } from '../../lib/ids';
 import type { Db } from '../index';
 import type { DollRow } from '../rows';
@@ -98,6 +98,8 @@ export interface DollBasicsPatch {
   silhouetteUrl?: string;
   clue?: string;
   hideHint?: string;
+  baseStory?: string;
+  baseCaption?: string;
 }
 
 /** Edits the host-facing base fields; level/riddle edits land in T904. */
@@ -111,7 +113,8 @@ export function updateDollBasics(
 
   db.prepare(
     `UPDATE dolls SET
-       name = ?, tagline = ?, silhouette_url = ?, clue = ?, hide_hint = ?, updated_at = ?
+       name = ?, tagline = ?, silhouette_url = ?, clue = ?, hide_hint = ?,
+       base_story = ?, base_caption = ?, updated_at = ?
      WHERE doll_id = ?`,
   ).run(
     patch.name ?? current.name,
@@ -119,6 +122,72 @@ export function updateDollBasics(
     patch.silhouetteUrl ?? current.silhouette_url,
     patch.clue ?? current.clue,
     patch.hideHint ?? current.hide_hint,
+    patch.baseStory ?? current.base_story,
+    patch.baseCaption ?? current.base_caption,
+    nowIso(),
+    dollId,
+  );
+
+  return getDoll(db, dollId);
+}
+
+export interface DollLevelUpdate {
+  levelType: LevelType;
+  nextClue: string | null;
+  eggEnabled: boolean;
+  e1Effect: E1Effect;
+  e1Sound: boolean;
+  riddleType: 'single_choice' | 'short_answer' | null;
+  question: string;
+  optionsJson: string;
+  hint: string;
+  wrongText: string;
+  maxAttempts: number;
+  answerHash: string;
+  synonymsJson: string;
+  secretModelUrl: string | null;
+  secretStory: string;
+  secretWhisper: string;
+  secretEffect: string;
+  secretStar: boolean;
+}
+
+/** Persist the full level/riddle/secret configuration (T904). */
+export function updateDollLevel(
+  db: Db,
+  dollId: string,
+  update: DollLevelUpdate,
+): DollRow | undefined {
+  const current = getDoll(db, dollId);
+  if (!current) return undefined;
+
+  db.prepare(
+    `UPDATE dolls SET
+       level_type = ?, next_clue = ?, egg_enabled = ?, e1_effect = ?, e1_sound = ?,
+       riddle_type = ?, question = ?, options_json = ?, hint = ?, wrong_text = ?,
+       max_attempts = ?, answer_hash = ?, synonyms_json = ?,
+       secret_model_url = ?, secret_story = ?, secret_whisper = ?,
+       secret_effect = ?, secret_star = ?, updated_at = ?
+     WHERE doll_id = ?`,
+  ).run(
+    update.levelType,
+    update.nextClue,
+    update.eggEnabled ? 1 : 0,
+    update.e1Effect,
+    update.e1Sound ? 1 : 0,
+    update.riddleType,
+    update.question,
+    update.optionsJson,
+    update.hint,
+    update.wrongText,
+    update.maxAttempts,
+    update.answerHash,
+    update.synonymsJson,
+    update.secretModelUrl,
+    update.secretStory,
+    update.secretWhisper,
+    update.secretEffect,
+    update.secretStar ? 1 : 0,
     nowIso(),
     dollId,
   );

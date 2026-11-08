@@ -6,6 +6,7 @@ import { getDollByAnyToken } from '../db/repos/dolls';
 import { markCollected, upsertDiscovered } from '../db/repos/progress';
 import { getRoomByCode, getRoomById } from '../db/repos/rooms';
 import { buildE1View } from '../services/play';
+import { readHostSession } from '../services/host-auth';
 import {
   createGuestSession,
   guestCookie,
@@ -77,6 +78,32 @@ export async function guestPages(
     const room = getRoomById(options.db, doll.room_id);
     if (!room) {
       return sendError(reply, 404, '房间不存在', '请让主人检查房间是否已创建。');
+    }
+
+    const query = request.query as { preview?: string };
+    if (query.preview === '1') {
+      const hostSession = readHostSession(request, {
+        config: options.config,
+        db: options.db,
+        secret: options.secret,
+      });
+      if (!hostSession || hostSession.roomId !== room.room_id) {
+        return sendError(reply, 403, '预览需要主人登录', '请先在主人电脑上登录管理端。');
+      }
+
+      const previewSession = { guestId: 'host_preview', roomId: room.room_id, exp: 0 };
+      const view = buildE1View(
+        options.db,
+        options.config,
+        options.secret,
+        previewSession,
+        doll,
+      );
+      return sendHtml(
+        reply,
+        200,
+        renderCardPage({ view, token, collected: false, preview: true }),
+      );
     }
 
     const session = readGuestSession(request, deps);

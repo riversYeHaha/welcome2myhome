@@ -5,11 +5,13 @@ export interface CardPageOptions {
   view: E1View;
   token: string;
   collected: boolean;
+  /** Host preview: no progress writes, no collect form. */
+  preview?: boolean;
 }
 
 /** SSR E1 card page: content is complete without JavaScript (no-JS collect form). */
 export function renderCardPage(options: CardPageOptions): string {
-  const { view, token, collected } = options;
+  const { view, token, collected, preview = false } = options;
 
   const silhouette = view.silhouette_url
     ? `<div class="silhouette"><img src="${escapeHtml(view.silhouette_url)}" alt="" /></div>`
@@ -19,9 +21,11 @@ export function renderCardPage(options: CardPageOptions): string {
     ? `<p class="story">${escapeHtml(view.base.story).replace(/\n/g, '<br />')}</p>`
     : '';
 
-  const action = collected
-    ? `<p class="collected">已收入收藏册</p>`
-    : `<form method="post" action="/d/${encodeURIComponent(token)}/collect">
+  const action = preview
+    ? `<p class="collected">预览模式 · 不会写入客人进度</p>`
+    : collected
+      ? `<p class="collected">已收入收藏册</p>`
+      : `<form method="post" action="/d/${encodeURIComponent(token)}/collect">
       <button type="submit">收下 TA</button>
     </form>`;
 
@@ -41,7 +45,7 @@ export function renderCardPage(options: CardPageOptions): string {
   ${story}
   ${action}
   ${teaser}
-  <p class="foot">E1 特效将在 T501 接入 · 收藏册将在 T603 接入</p>
+  <p class="foot">${preview ? '主人预览 · ' : ''}E1 特效将在 T501 接入 · 收藏册将在 T603 接入</p>
 </main>`;
 
   return renderPage({ title: `${view.name} · 欢迎来到我的家`, body });

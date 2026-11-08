@@ -1,9 +1,17 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { RoomStatus } from '../../shared/contracts';
+import type { HostDoll, HostRoom } from '../../shared/host';
+import { isLevelTypeAvailableForP0 } from '../../shared/levels';
 import type { AppConfig } from '../config';
 import type { Db } from '../db';
-import { getDoll, listDolls } from '../db/repos/dolls';
+import {
+  deleteDoll,
+  getDoll,
+  listDolls,
+  updateDollBasics,
+  updateDollLevel,
+} from '../db/repos/dolls';
 import {
   createRoom,
   getRoomById,
@@ -12,7 +20,7 @@ import {
   setRoomLanIp,
   setRoomStatus,
 } from '../db/repos/rooms';
-import type { RoomRow } from '../db/rows';
+import type { DollRow, RoomRow } from '../db/rows';
 import { hashSecret, verifySecret } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
@@ -24,7 +32,8 @@ import {
   eggQuizDollCount,
   parseFinaleConfig,
 } from '../services/finale';
-import { issueBackupToken } from '../services/cards';
+import { createDollWithCard, issueBackupToken } from '../services/cards';
+import { hashAnswer, normalizeAnswer } from '../services/judge';
 import {
   clearSessionCookie,
   createHostSession,
@@ -64,6 +73,65 @@ const NetworkBody = z
   })
   .strict();
 
+const CreateDollBody = z
+  .object({
+    name: z.string().trim().min(1).max(30),
+    tagline: z.string().max(80).optional(),
+    levelType: z.enum(['discovery', 'bonus_quiz']).optional(),
+  })
+  .strict();
+
+const BasicsBody = z
+  .object({
+    name: z.string().trim().min(1).max(30).optional(),
+    tagline: z.string().max(80).optional(),
+    silhouetteUrl: z.string().max(300).optional(),
+    clue: z.string().max(120).optional(),
+    hideHint: z.string().max(120).optional(),
+    baseStory: z.string().max(200).optional(),
+    baseCaption: z.string().max(120).optional(),
+  })
+  .strict();
+
+const RiddleBody = z
+  .object({
+    type: z.enum(['single_choice', 'short_answer']).optional(),
+    question: z.string().max(200).default(''),
+    options: z.array(z.string().max(40)).max(4).default([]),
+    answer: z.string().max(100).default(''),
+    hint: z.string().max(200).default(''),
+    wrong_text: z.string().max(200).default(''),
+    max_attempts: z.number().int().min(0).max(100).default(0),
+    synonyms: z.array(z.string().max(40)).max(20).default([]),
+  })
+  .strict();
+
+const SecretBody = z
+  .object({
+    story: z.string().max(1000).default(''),
+    whisper: z.string().max(200).default(''),
+    effect: z.string().max(40).default('golden_gather'),
+    star: z.boolean().default(true),
+    model_url: z.string().max(300).nullable().optional(),
+  })
+  .strict();
+
+const LevelBody = z
+  .object({
+    level_type: z.enum(['discovery', 'bonus_quiz', 'clue_chain', 'duo_scan', 'timed']),
+    egg_enabled: z.boolean(),
+    next_clue: z.string().max(120).nullable().optional(),
+    e1: z
+      .object({
+        effect: z.enum(['starlight', 'confetti', 'bubbles', 'sparks']),
+        sound: z.boolean(),
+      })
+      .strict(),
+    riddle: RiddleBody.optional(),
+    secret: SecretBody.optional(),
+  })
+  .strict();
+
 const TRANSITIONS: Record<RoomStatus, readonly RoomStatus[]> = {
   draft: ['live'],
   live: ['paused', 'ended'],
@@ -79,7 +147,56 @@ function primaryRoom(db: Db): RoomRow | undefined {
     .get() as RoomRow | undefined;
 }
 
-function roomView(room: RoomRow) {
+function parseStringArray(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function dollView(doll: DollRow): HostDoll {
+  return {
+    doll_id: doll.doll_id,
+    room_id: doll.room_id,
+    name: doll.name,
+    tagline: doll.tagline,
+    sort_order: doll.sort_order,
+    card_token: doll.card_token,
+    short_code: doll.short_code,
+    clue: doll.clue,
+    hide_hint: doll.hide_hint,
+    silhouette_url: doll.silhouette_url,
+    level_type: doll.level_type,
+    next_clue: doll.next_clue,
+    egg_enabled: doll.egg_enabled === 1,
+    e1_effect: doll.e1_effect,
+    e1_sound: doll.e1_sound === 1,
+    riddle_type: doll.riddle_type,
+    question: doll.question,
+    options: parseStringArray(doll.options_json),
+    hint: doll.hint,
+    wrong_text: doll.wrong_text,
+    max_attempts: doll.max_attempts,
+    answer_configured: doll.answer_hash.length > 0,
+    synonyms: parseStringArray(doll.synonyms_json),
+    base_story: doll.base_story,
+    base_caption: doll.base_caption,
+    base_model_url: doll.base_model_url,
+    base_photo_url: doll.base_photo_url,
+    secret_model_url: doll.secret_model_url,
+    secret_story: doll.secret_story,
+    secret_whisper: doll.secret_whisper,
+    secret_effect: doll.secret_effect,
+    secret_star: doll.secret_star === 1,
+    gen_status: doll.gen_status,
+  };
+}
+
+function roomView(room: RoomRow): HostRoom {
   return {
     room_id: room.room_id,
     room_code: room.room_code,
@@ -222,7 +339,142 @@ export async function hostRoutes(
     const room = getRoomById(options.db, id);
     if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
 
-    return { room: roomView(room), dolls: listDolls(options.db, id) };
+    return { room: roomView(room), dolls: listDolls(options.db, id).map(dollView) };
+  });
+
+  app.post('/api/dolls', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const body = parseBody(CreateDollBody, request.body);
+    const doll = createDollWithCard(options.db, {
+      roomId: session.roomId,
+      name: body.name,
+      tagline: body.tagline,
+      levelType: body.levelType,
+    });
+
+    return { doll: dollView(doll) };
+  });
+
+  app.patch('/api/dolls/:id', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const body = parseBody(BasicsBody, request.body);
+    const updated = updateDollBasics(options.db, id, body);
+    if (!updated) throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    return { doll: dollView(updated) };
+  });
+
+  app.delete('/api/dolls/:id', async (request, reply) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    deleteDoll(options.db, id);
+    return reply.code(204).send();
+  });
+
+  app.patch('/api/dolls/:id/level', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const body = parseBody(LevelBody, request.body);
+    if (!isLevelTypeAvailableForP0(body.level_type)) {
+      throw new AppError('LEVEL_TYPE_NOT_AVAILABLE', 422, '该关卡类型将在后续版本开放');
+    }
+
+    const isDiscovery = body.level_type === 'discovery';
+    const eggEnabled = isDiscovery ? false : body.egg_enabled;
+    const riddle = isDiscovery ? undefined : body.riddle;
+
+    const riddleType = eggEnabled ? (riddle?.type ?? 'short_answer') : null;
+    const question = eggEnabled ? (riddle?.question ?? '') : '';
+    const answer = eggEnabled ? (riddle?.answer ?? '') : '';
+    const hintText = eggEnabled ? (riddle?.hint ?? '') : '';
+    const wrongText = eggEnabled ? (riddle?.wrong_text ?? '') : '';
+    const maxAttempts = eggEnabled ? (riddle?.max_attempts ?? 0) : 0;
+    const synonymInput = eggEnabled ? (riddle?.synonyms ?? []) : [];
+
+    let answerHash = '';
+    let synonyms: string[] = [];
+    let choiceOptions: string[] = [];
+
+    if (eggEnabled) {
+      if (question.trim().length === 0 || answer.trim().length === 0) {
+        throw new AppError('VALIDATION_FAILED', 422, '启用彩蛋题时必须填写题干和答案');
+      }
+
+      choiceOptions = (riddle?.options ?? [])
+        .map((option) => option.trim())
+        .filter(Boolean);
+
+      if (riddleType === 'single_choice') {
+        if (choiceOptions.length < 2 || choiceOptions.length > 4) {
+          throw new AppError('VALIDATION_FAILED', 422, '单选题需要 2–4 个选项');
+        }
+        const normalizedAnswer = normalizeAnswer(answer);
+        if (
+          !choiceOptions.some(
+            (option) => normalizeAnswer(option) === normalizedAnswer,
+          )
+        ) {
+          throw new AppError('VALIDATION_FAILED', 422, '正确答案必须是选项之一');
+        }
+      }
+
+      answerHash = hashAnswer(answer, options.config.judge.scrypt);
+      synonyms = [
+        ...new Set(
+          synonymInput
+            .map(normalizeAnswer)
+            .filter((synonym) => synonym.length > 0),
+        ),
+      ];
+    }
+
+    const secret = body.secret;
+    const updated = updateDollLevel(options.db, id, {
+      levelType: body.level_type,
+      nextClue: body.next_clue ?? null,
+      eggEnabled,
+      e1Effect: body.e1.effect,
+      e1Sound: body.e1.sound,
+      riddleType,
+      question,
+      optionsJson: JSON.stringify(choiceOptions),
+      hint: hintText,
+      wrongText,
+      maxAttempts,
+      answerHash,
+      synonymsJson: JSON.stringify(synonyms),
+      secretModelUrl: secret?.model_url || null,
+      secretStory: secret?.story ?? '',
+      secretWhisper: secret?.whisper ?? '',
+      secretEffect: secret?.effect ?? 'golden_gather',
+      secretStar: secret?.star ?? true,
+    });
+
+    if (!updated) throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    return { doll: dollView(updated) };
   });
 
   app.patch('/api/room/:id/finale', async (request) => {

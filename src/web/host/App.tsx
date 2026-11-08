@@ -1,78 +1,417 @@
-import { useEffect, useState } from 'react';
-import type { HealthResponse } from '@shared/contracts';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import type { HostRoom, HostRoomDetail } from '@shared/host';
+import type { RoomStatus } from '@shared/contracts';
+import { ApiError, hostApi, setCsrfToken, type HostStatus } from './api';
+import { DollEditor } from './DollEditor';
+import { FinaleEditor } from './FinaleEditor';
+
+const STATUS_LABEL: Record<RoomStatus, string> = {
+  draft: '未开局',
+  live: '进行中',
+  paused: '已暂停',
+  ended: '已结束',
+};
+
+function messageOf(reason: unknown): string {
+  if (reason instanceof ApiError) return reason.message;
+  return reason instanceof Error ? reason.message : '操作失败';
+}
 
 export function App(): JSX.Element {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<HostStatus | null>(null);
+  const [detail, setDetail] = useState<HostRoomDetail | null>(null);
+  const [pin, setPin] = useState('');
+  const [roomTitle, setRoomTitle] = useState('欢迎来到我的家');
+  const [newDollName, setNewDollName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const loadRoom = useCallback(async (roomId: string): Promise<void> => {
+    const next = await hostApi.room(roomId);
+    setDetail(next);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    fetch('/api/health', { headers: { accept: 'application/json' } })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as HealthResponse;
-        if (!cancelled) setHealth(body);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
-      });
-
+    void (async () => {
+      try {
+        const next = await hostApi.status();
+        if (cancelled) return;
+        setStatus(next);
+        if (next.csrfToken) setCsrfToken(next.csrfToken);
+        if (next.authenticated && next.room) await loadRoom(next.room.room_id);
+      } catch (reason) {
+        if (!cancelled) setError(messageOf(reason));
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadRoom]);
+
+  async function authenticate(mode: 'setup' | 'login'): Promise<void> {
+    if (!/^\d{4,8}$/.test(pin)) {
+      setError('PIN 必须是 4–8 位数字');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const result =
+        mode === 'setup'
+          ? await hostApi.setup(pin, roomTitle.trim() || '欢迎来到我的家')
+          : await hostApi.login(pin);
+      setCsrfToken(result.csrfToken);
+      setStatus({
+        initialized: true,
+        authenticated: true,
+        room: result.room,
+        csrfToken: result.csrfToken,
+      });
+      setPin('');
+      await loadRoom(result.room.room_id);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const refreshRoom = useCallback(async (): Promise<void> => {
+    const roomId = detail?.room.room_id ?? status?.room?.room_id;
+    if (roomId) await loadRoom(roomId);
+  }, [detail?.room.room_id, status?.room?.room_id, loadRoom]);
+
+  async function act(task: () => Promise<unknown>, success?: string): Promise<void> {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await task();
+      if (success) setNotice(success);
+      await refreshRoom();
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createDoll(): Promise<void> {
+    const name = newDollName.trim();
+    if (!name) {
+      setError('先填写新成员的名字');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const created = await hostApi.createDoll({ name });
+      setNewDollName('');
+      await refreshRoom();
+      setEditingId(created.doll.doll_id);
+      setNotice('人偶已创建，继续配置关卡与彩蛋题');
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeDoll(dollId: string, name: string): Promise<void> {
+    if (!window.confirm(`确定删除「${name}」？该卡二维码与进度会一并删除。`)) return;
+    await act(() => hostApi.deleteDoll(dollId), '人偶已删除');
+    setEditingId(null);
+  }
+
+  async function logout(): Promise<void> {
+    setBusy(true);
+    setError('');
+    try {
+      await hostApi.logout();
+      setStatus({ initialized: true, authenticated: false, room: status?.room ?? null });
+      setDetail(null);
+      setNotice('');
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveNetwork(lanIp: string, port: number): Promise<void> {
+    if (!detail) return;
+    await hostApi.setNetwork(detail.room.room_id, lanIp, port);
+    await refreshRoom();
+    setNotice('局域网地址已保存，建议重新导出卡片');
+  }
+
+  if (!status) {
+    return (
+      <main className="host">
+        <p className="muted">正在加载主人端…</p>
+        {error ? <p className="err">{error}</p> : null}
+      </main>
+    );
+  }
+
+  if (!status.initialized || !status.authenticated) {
+    const setup = !status.initialized;
+    return (
+      <main className="host auth">
+        <header className="host-header">
+          <p className="eyebrow">{setup ? '首次运行' : '主人端'}</p>
+          <h1>{setup ? '先设置 PIN 和房间' : '欢迎回来'}</h1>
+          <p className="sub">
+            {setup
+              ? 'PIN 用于保护管理端，只在主人电脑的 localhost 输入。'
+              : '输入 PIN 继续布置今晚的寻宝。'}
+          </p>
+        </header>
+
+        <section className="panel auth-panel">
+          {setup ? (
+            <label>
+              房间标题
+              <input
+                value={roomTitle}
+                onChange={(event) => setRoomTitle(event.target.value)}
+                maxLength={60}
+              />
+            </label>
+          ) : null}
+          <label>
+            PIN（4–8 位数字）
+            <input
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(event) => setPin(event.target.value)}
+              maxLength={8}
+              autoComplete="current-password"
+            />
+          </label>
+          {error ? <p className="err">{error}</p> : null}
+          <button type="button" disabled={busy} onClick={() => void authenticate(setup ? 'setup' : 'login')}>
+            {busy ? '请稍候…' : setup ? '创建房间并进入' : '登录'}
+          </button>
+          {setup ? (
+            <p className="muted">首次进入会创建 6 位房间码；之后用 PIN 登录。</p>
+          ) : null}
+        </section>
+      </main>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <main className="host">
+        <p className="muted">正在读取房间…</p>
+        {error ? <p className="err">{error}</p> : null}
+      </main>
+    );
+  }
+
+  const room = detail.room;
+  const editing = detail.dolls.find((doll) => doll.doll_id === editingId) ?? null;
+  const canLive = room.status === 'draft' || room.status === 'paused';
 
   return (
     <main className="host">
       <header className="host-header">
-        <p className="eyebrow">S0 · 主人端占位</p>
-        <h1>欢迎来到我的家 · 主人端</h1>
-        <p className="sub">登录、房间、人偶与关卡配置将在 T201 / T901 接入。</p>
+        <div>
+          <p className="eyebrow">主人端</p>
+          <h1>{room.title}</h1>
+          <p className="sub">
+            房间码 <code>{room.room_code}</code> ·{' '}
+            <span className={`pill ${room.status}`}>{STATUS_LABEL[room.status]}</span>
+          </p>
+        </div>
+        <button type="button" className="ghost" disabled={busy} onClick={() => void logout()}>
+          退出
+        </button>
       </header>
 
-      <section className="panel" aria-live="polite">
-        <h2>服务状态</h2>
-        {health ? (
-          <dl>
-            <div>
-              <dt>服务</dt>
-              <dd className="ok">已连接</dd>
-            </div>
-            <div>
-              <dt>版本</dt>
-              <dd>v{health.version}</dd>
-            </div>
-            <div>
-              <dt>数据库 schema</dt>
-              <dd>v{health.db.schemaVersion ?? '?'}</dd>
-            </div>
-            <div>
-              <dt>启动时长</dt>
-              <dd>{health.uptimeSec}s</dd>
-            </div>
-          </dl>
-        ) : error ? (
-          <p className="err">无法连接服务：{error}</p>
-        ) : (
-          <p className="muted">正在检查…</p>
-        )}
+      {error ? <p className="err banner">{error}</p> : null}
+      {notice ? <p className="notice banner">{notice}</p> : null}
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2>房间</h2>
+          <div className="row">
+            {canLive ? (
+              <button type="button" disabled={busy} onClick={() => void act(() => hostApi.setStatus(room.room_id, 'live'), '已开局')}>
+                开局 / 继续
+              </button>
+            ) : null}
+            {room.status === 'live' ? (
+              <button type="button" className="ghost" disabled={busy} onClick={() => void act(() => hostApi.setStatus(room.room_id, 'paused'), '已暂停')}>
+                暂停
+              </button>
+            ) : null}
+            {room.status === 'live' || room.status === 'paused' ? (
+              <button type="button" className="danger" disabled={busy} onClick={() => void act(() => hostApi.setStatus(room.room_id, 'ended'), '已结束')}>
+                结束
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="room-grid">
+          <div>
+            <h3>欢迎码</h3>
+            <img className="qr" src="/api/cards/welcome.png" alt="欢迎码" />
+            <p className="muted">贴在门口或餐桌；客人扫码进入。</p>
+          </div>
+          <NetworkForm room={room} onSave={saveNetwork} />
+        </div>
       </section>
 
       <section className="panel">
-        <h2>下一步（S0 → S2）</h2>
-        <ol className="todo">
-          <li>T104 数据访问层（room / doll / guest / progress）</li>
-          <li>T201/T202 主人 PIN 与房间创建</li>
-          <li>T301/T302 token、短码与二维码</li>
-          <li>T401/T402 E1 全量响应与 SSR 卡片页</li>
-        </ol>
+        <div className="panel-head">
+          <h2>人偶（{detail.dolls.length}）</h2>
+          <div className="inline">
+            <input
+              value={newDollName}
+              onChange={(event) => setNewDollName(event.target.value)}
+              placeholder="新成员名字"
+              maxLength={30}
+            />
+            <button type="button" disabled={busy} onClick={() => void createDoll()}>
+              添加人偶
+            </button>
+          </div>
+        </div>
+
+        {detail.dolls.length === 0 ? (
+          <p className="muted">还没有人偶。先添加一个，再配置关卡与彩蛋题。</p>
+        ) : (
+          <div className="doll-grid">
+            {detail.dolls.map((doll) => (
+              <article className="doll-card" key={doll.doll_id}>
+                <div className="panel-head">
+                  <strong>{doll.name}</strong>
+                  <span className="code">{doll.short_code}</span>
+                </div>
+                <p className="muted">
+                  {doll.level_type === 'discovery' ? '纯发现' : '彩蛋题'}
+                  {doll.egg_enabled ? ' · E2 已开' : ''}
+                  {doll.answer_configured ? '' : ' · 答案未配置'}
+                </p>
+                <img
+                  className="qr"
+                  src={`/api/cards/${doll.doll_id}/qr.png`}
+                  alt={`${doll.name} 二维码`}
+                  loading="lazy"
+                />
+                <div className="row">
+                  <button type="button" onClick={() => setEditingId(doll.doll_id)}>
+                    编辑
+                  </button>
+                  <a
+                    className="button ghost"
+                    href={`/d/${doll.card_token}?preview=1`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    预览
+                  </a>
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => void removeDoll(doll.doll_id, doll.name)}
+                  >
+                    删除
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
-      <footer className="host-foot">
-        <a href="/">← 客人端</a>
-        <span>welcome2myhome · v0.1.0</span>
-      </footer>
+      {editing ? (
+        <DollEditor
+          doll={editing}
+          onSaved={(saved) => {
+            setEditingId(saved.doll_id);
+            void refreshRoom();
+            setNotice('关卡已保存');
+          }}
+          onClose={() => setEditingId(null)}
+        />
+      ) : null}
+
+      <FinaleEditor
+        room={room}
+        onSaved={async () => {
+          await refreshRoom();
+          setNotice('终局已保存');
+        }}
+      />
     </main>
+  );
+}
+
+function NetworkForm({
+  room,
+  onSave,
+}: {
+  room: HostRoom;
+  onSave: (ip: string, port: number) => Promise<void>;
+}): JSX.Element {
+  const [lanIp, setLanIp] = useState(room.lan_ip);
+  const [port, setPort] = useState(String(room.port || 8080));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLanIp(room.lan_ip);
+    setPort(String(room.port || 8080));
+  }, [room.lan_ip, room.port]);
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await onSave(lanIp.trim(), Number(port) || 8080);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="network" onSubmit={(event) => void submit(event)}>
+      <h3>局域网地址</h3>
+      <label>
+        LAN IP
+        <input
+          value={lanIp}
+          onChange={(event) => setLanIp(event.target.value)}
+          placeholder="192.168.1.50"
+          inputMode="decimal"
+        />
+      </label>
+      <label>
+        端口
+        <input
+          value={port}
+          onChange={(event) => setPort(event.target.value)}
+          inputMode="numeric"
+          maxLength={5}
+        />
+      </label>
+      <button type="submit" disabled={busy}>
+        {busy ? '保存中…' : '保存地址'}
+      </button>
+      <p className="muted">卡片二维码会写入这个地址；IP 变化后需要重新导出。</p>
+      {error ? <p className="err">{error}</p> : null}
+    </form>
   );
 }
