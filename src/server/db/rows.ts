@@ -103,3 +103,23 @@ export interface GenTaskRow {
   created_at: string;
   updated_at: string;
 }
+
+export type AssetKind =
+  | 'base_model'
+  | 'secret_model'
+  | 'silhouette'
+  | 'photo'
+  | 'finale_image'
+  | 'card_qr'
+  | 'preset_model';
+
+export interface AssetRow {
+  asset_id: string;
+  room_id: string;
+  doll_id: string | null;
+  kind: AssetKind;
+  path: string;
+  bytes: number;
+  checksum: string;
+  created_at: string;
+}

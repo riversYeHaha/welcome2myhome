@@ -4,6 +4,7 @@ import FormData from 'form-data';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 import { makeTestApp, setupHost, type TestApp } from '../helpers/test-app';
+import { triangleGlb } from '../helpers/glb';
 
 const contexts: TestApp[] = [];
 
@@ -74,7 +75,7 @@ describe('photo upload → manual GLB generation', () => {
     expect(task.statusCode).toBe(200);
     expect(task.json<{ task: { stage: string } }>().task.stage).toBe('awaiting_upload');
 
-    const glb = Buffer.concat([Buffer.from('glTF'), Buffer.alloc(24)]);
+    const glb = triangleGlb(2);
     const modelForm = new FormData();
     modelForm.append('model', glb, { filename: 'doll.glb', contentType: 'model/gltf-binary' });
 

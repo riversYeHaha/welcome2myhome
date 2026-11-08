@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 interface ViewerOptions {
@@ -13,6 +14,32 @@ interface ViewerHandle {
 
 const PALETTE = [0xe5b567, 0x7ed6a5, 0xf28b82, 0x8ab4f8, 0xd98acb];
 const MODEL_HEIGHT = 0.42;
+/** Self-hosted decoder copied from three (`src/web/public/draco/`, no CDN). */
+const DRACO_DECODER_PATH = '/draco/';
+
+/**
+ * One shared DRACOLoader per page: the decoder worker pool is expensive to
+ * spin up and is safe to reuse across inline cards and the collection overlay.
+ * Uncompressed GLBs never touch it, so a missing /draco/ asset cannot break
+ * the normal path.
+ */
+let dracoLoader: DRACOLoader | null = null;
+
+function getDracoLoader(): DRACOLoader {
+  if (!dracoLoader) {
+    dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath(DRACO_DECODER_PATH);
+    dracoLoader.setWorkerLimit(2);
+  }
+  return dracoLoader;
+}
+
+function createGltfLoader(): GLTFLoader {
+  const loader = new GLTFLoader();
+  loader.setDRACOLoader(getDracoLoader());
+  return loader;
+}
+
 
 function hashString(value: string): number {
   let hash = 0;
@@ -134,7 +161,7 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
   }
 
   function load(url: string, retried = false): void {
-    const loader = new GLTFLoader();
+    const loader = createGltfLoader();
     loader.load(
       url,
       (gltf) => replaceWithModel(gltf.scene),

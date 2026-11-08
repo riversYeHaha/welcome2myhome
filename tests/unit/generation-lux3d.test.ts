@@ -7,6 +7,7 @@ import { createDollWithCard } from '../../src/server/services/cards';
 import { createRoom } from '../../src/server/db/repos/rooms';
 import { runLux3DGeneration, type Lux3DProvider } from '../../src/server/services/generation';
 import { makeTestApp, type TestApp } from '../helpers/test-app';
+import { triangleGlb } from '../helpers/glb';
 
 const contexts: TestApp[] = [];
 
@@ -23,7 +24,7 @@ function fakeProvider(overrides: Partial<Lux3DProvider> = {}): Lux3DProvider {
     uploadImage: async () => 'https://img.test/photo.jpg',
     createImgTo3D: async () => '42',
     waitForTask: async () => ['https://cdn/model.glb'],
-    download: async () => Buffer.from('glTF-generated'),
+    download: async () => triangleGlb(2),
     glbFromOutputs: (outputs) => outputs[0]!,
     ...overrides,
   };

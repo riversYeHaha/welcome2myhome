@@ -56,7 +56,10 @@ describe('security headers', () => {
 
       const csp = String(response.headers['content-security-policy'] ?? '');
       expect(csp).toContain("default-src 'self'");
-      expect(directive(csp, 'script-src')).toBe("script-src 'self'");
+      // `wasm-unsafe-eval` is required by the self-hosted Draco decoder; it
+      // does not enable general eval.
+      expect(directive(csp, 'script-src')).toBe("script-src 'self' 'wasm-unsafe-eval'");
+      expect(directive(csp, 'script-src')).not.toContain("'unsafe-eval'");
       expect(directive(csp, 'style-src')).toBe("style-src 'self' 'unsafe-inline'");
       expect(directive(csp, 'img-src')).toBe("img-src 'self' data: blob:");
       expect(directive(csp, 'media-src')).toBe("media-src 'self'");

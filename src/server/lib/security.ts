@@ -26,7 +26,9 @@ const MINUTE_MS = 60_000;
  */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self'",
+  // `wasm-unsafe-eval` is narrowed to WebAssembly compilation only: the
+  // self-hosted Draco decoder compiles its WASM module inside a blob worker.
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self'",
