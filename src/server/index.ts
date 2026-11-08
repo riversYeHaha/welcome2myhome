@@ -1,7 +1,8 @@
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { APP_VERSION, buildApp } from './app';
 import { ensureDataDirs, loadConfig } from './config';
 import { openDatabase } from './db';
+import { loadOrCreateSecret } from './lib/crypto';
 import { migrate } from './db/migrate';
 
 async function main(): Promise<void> {
@@ -15,7 +16,12 @@ async function main(): Promise<void> {
     backupDir: config.paths.backups,
   });
 
-  const app = await buildApp({ config, db, version: APP_VERSION });
+  const secretPath = isAbsolute(config.ticket.secretFile)
+    ? config.ticket.secretFile
+    : join(config.paths.root, config.ticket.secretFile);
+  const secret = loadOrCreateSecret(secretPath);
+
+  const app = await buildApp({ config, db, secret, version: APP_VERSION });
 
   app.log.info(
     {

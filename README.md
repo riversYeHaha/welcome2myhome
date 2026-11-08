@@ -31,9 +31,10 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 ## 当前状态
 
 - 文档：PRD 已定稿，技术方案与开发计划已按独立评审意见修订。
-- 代码：**S0 完成（T101–T103）**，并完成 **T104 数据访问层**（room/doll/guest/progress/event/gen）。最小服务与 `/api/health` 已跑通。
-- 已验证：`typecheck`、`lint`、`test`（14 个用例）、`build`、`start`、`dev`（含 Vite 代理）。
-- 下一步：T201/T202 主人 PIN、会话与房间创建 → T301/T302 token/短码/二维码 → T401/T402 E1 响应与 SSR 卡片页。
+- 代码：S0（T101–T103）、**T104 数据访问层**、**T201/T202 主人 PIN / 会话 / CSRF / localOnly**、**T203 房间状态机**已完成。
+- 主人端 API 已可用：`/api/host/status|setup|login|logout|me|pin`、`/api/room/:id`、`PATCH /api/room/:id/status`（登录页 UI 在 T901 接入）。
+- 已验证：`typecheck`、`lint`、`test`（26 个用例）、`build`、`start`、`dev`；生产形态下完成「setup → 会话 → 房间 → draft→live」冒烟。
+- 下一步：T301/T302 token/短码/二维码 → T401/T402 E1 全量响应与 SSR 卡片页 → T403/T404 discover 与会话恢复。
 
 ## 目录结构
 

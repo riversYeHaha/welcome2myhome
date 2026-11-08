@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -32,7 +33,7 @@ describe('GET /api/health', () => {
     migrate(db, { dbPath, backupDir: join(dir, 'backups') });
 
     const config = loadConfig({ rootDir: repoRoot, env: {} });
-    const app = await buildApp({ config, db, logger: false });
+    const app = await buildApp({ config, db, secret: randomBytes(32), logger: false });
 
     const response = await app.inject({ method: 'GET', url: '/api/health' });
     expect(response.statusCode).toBe(200);
@@ -54,7 +55,7 @@ describe('GET /api/health', () => {
     migrate(db, { dbPath, backupDir: join(dir, 'backups') });
 
     const config = loadConfig({ rootDir: repoRoot, env: {} });
-    const app = await buildApp({ config, db, logger: false });
+    const app = await buildApp({ config, db, secret: randomBytes(32), logger: false });
 
     const response = await app.inject({ method: 'GET', url: '/api/does-not-exist' });
     expect(response.statusCode).toBe(404);
