@@ -20,42 +20,6 @@ form{margin:0}
 .error{color:var(--err);font-size:14px;margin:10px 0 0}
 .foot{margin-top:22px;font-size:12px;color:#8d7a6b}
 a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
-`;
-
-const ESCAPES: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ESCAPES[character] ?? character);
-}
-
-export interface PageOptions {
-  title: string;
-  body: string;
-  /** Same-origin module scripts, loaded after the body. */
-  scripts?: string[];
-}
-
-export function renderPage(options: PageOptions): string {
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#1b1512" />
-<title>${escapeHtml(options.title)}</title>
-<style>${BASE_STYLES}</style>
-</head>
-<body>
-${options.body}
-${(options.scripts ?? []).map((script) => `<script type="module" src="${escapeHtml(script)}"></script>`).join('\n')}
-</body>
-</html>
 /* --- E1 effect layer (T501–T506) --- */
 .card{position:relative;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .e1-ready .card[data-e1="flip"]{transform:rotateY(-12deg) scale(.985)}
@@ -127,6 +91,42 @@ ${(options.scripts ?? []).map((script) => `<script type="module" src="${escapeHt
 .viewer-stage{width:min(72vw,72vh);height:min(72vw,72vh);min-width:220px;min-height:220px}
 .viewer-title{margin:0;color:var(--ink);font-size:14px;letter-spacing:.08em}
 .viewer-close{padding:8px 18px;border-radius:999px;border:1px solid #4a382c;background:transparent;color:var(--gold);cursor:pointer}
+`;
+
+const ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ESCAPES[character] ?? character);
+}
+
+export interface PageOptions {
+  title: string;
+  body: string;
+  /** Same-origin module scripts, loaded after the body. */
+  scripts?: string[];
+}
+
+export function renderPage(options: PageOptions): string {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1b1512" />
+<title>${escapeHtml(options.title)}</title>
+<style>${BASE_STYLES}</style>
+</head>
+<body>
+${options.body}
+${(options.scripts ?? []).map((script) => `<script type="module" src="${escapeHtml(script)}"></script>`).join('\n')}
+</body>
+</html>
 `;
 }
 
