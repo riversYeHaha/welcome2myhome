@@ -31,9 +31,9 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 ## 当前状态
 
 - 文档：PRD 已定稿，技术方案与开发计划已按独立评审意见修订。
-- 代码：**S0 完成**——T101 仓库/构建、T102 配置与脱敏日志、T103 SQLite schema/迁移/备份；最小服务与 `/api/health` 已跑通。
-- 已验证：`typecheck`、`lint`、`test`（8 个用例）、`build`、`start`、`dev`（含 Vite 代理）。
-- 下一步：T104 数据访问层 → T201/T202 主人 PIN 与房间创建 → T301/T302 token/短码/二维码。
+- 代码：**S0 完成（T101–T103）**，并完成 **T104 数据访问层**（room/doll/guest/progress/event/gen）。最小服务与 `/api/health` 已跑通。
+- 已验证：`typecheck`、`lint`、`test`（14 个用例）、`build`、`start`、`dev`（含 Vite 代理）。
+- 下一步：T201/T202 主人 PIN、会话与房间创建 → T301/T302 token/短码/二维码 → T401/T402 E1 响应与 SSR 卡片页。
 
 ## 目录结构
 
