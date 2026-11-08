@@ -3,11 +3,12 @@ import { z } from 'zod';
 import type { RoomStatus } from '../../shared/contracts';
 import type { AppConfig } from '../config';
 import type { Db } from '../db';
-import { listDolls } from '../db/repos/dolls';
+import { getDoll, listDolls } from '../db/repos/dolls';
 import {
   createRoom,
   getRoomById,
   setRoomHostPinHash,
+  setRoomLanIp,
   setRoomStatus,
 } from '../db/repos/rooms';
 import type { RoomRow } from '../db/rows';
@@ -15,6 +16,8 @@ import { hashSecret, verifySecret } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
 import { LoginThrottle } from '../lib/login-throttle';
+import { isUniqueViolation } from '../lib/sqlite';
+import { issueBackupToken } from '../services/cards';
 import {
   clearSessionCookie,
   createHostSession,
@@ -47,6 +50,12 @@ const ChangePinBody = z.object({ currentPin: PinSchema, newPin: PinSchema }).str
 const RoomStatusBody = z
   .object({ status: z.enum(['draft', 'live', 'paused', 'ended']) })
   .strict();
+const NetworkBody = z
+  .object({
+    lan_ip: z.string().ip({ version: 'v4' }),
+    port: z.number().int().min(1).max(65535).optional(),
+  })
+  .strict();
 
 const TRANSITIONS: Record<RoomStatus, readonly RoomStatus[]> = {
   draft: ['live'],
@@ -74,12 +83,6 @@ function roomView(room: RoomRow) {
     lan_ip: room.lan_ip,
     port: room.port,
   };
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT');
 }
 
 /**
@@ -212,6 +215,34 @@ export async function hostRoutes(
     if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
 
     return { room: roomView(room), dolls: listDolls(options.db, id) };
+  });
+
+  app.patch('/api/room/:id/network', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    if (id !== session.roomId) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const body = parseBody(NetworkBody, request.body);
+    const updated = setRoomLanIp(options.db, id, body.lan_ip, body.port);
+    if (!updated) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    return { room: roomView(updated) };
+  });
+
+  app.post('/api/dolls/:id/backup-token', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const updated = issueBackupToken(options.db, id);
+    return { doll_id: updated.doll_id, backup_token: updated.card_token_backup };
   });
 
   app.patch('/api/room/:id/status', async (request) => {

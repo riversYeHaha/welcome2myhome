@@ -10,8 +10,10 @@ import type { AppConfig } from './config';
 import type { Db } from './db';
 import { AppError } from './lib/errors';
 import { buildLoggerOptions } from './lib/logger';
+import { cardRoutes } from './routes/cards';
 import { healthRoutes } from './routes/health';
 import { hostRoutes } from './routes/host';
+import { playRoutes } from './routes/play';
 import './types';
 
 export const APP_VERSION = '0.1.0';
@@ -90,6 +92,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   await app.register(healthRoutes, { version });
   await app.register(hostRoutes, { config, db, secret });
+  await app.register(cardRoutes, { db });
+  await app.register(playRoutes, { db });
 
   const webRoot = config.paths.web;
   if (existsSync(join(webRoot, 'index.html'))) {

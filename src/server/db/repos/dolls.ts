@@ -61,6 +61,26 @@ export function getDollByShortCode(db: Db, shortCode: string): DollRow | undefin
     | undefined;
 }
 
+/** Resolve either the primary or the backup card token (T303). */
+export function getDollByAnyToken(db: Db, token: string): DollRow | undefined {
+  return db
+    .prepare('SELECT * FROM dolls WHERE card_token = ? OR card_token_backup = ?')
+    .get(token, token) as DollRow | undefined;
+}
+
+export function setDollBackupToken(
+  db: Db,
+  dollId: string,
+  token: string,
+): DollRow | undefined {
+  db.prepare('UPDATE dolls SET card_token_backup = ?, updated_at = ? WHERE doll_id = ?').run(
+    token,
+    nowIso(),
+    dollId,
+  );
+  return getDoll(db, dollId);
+}
+
 export function listDolls(db: Db, roomId: string): DollRow[] {
   return db
     .prepare('SELECT * FROM dolls WHERE room_id = ? ORDER BY sort_order ASC, created_at ASC')

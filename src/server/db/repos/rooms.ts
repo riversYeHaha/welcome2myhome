@@ -45,6 +45,13 @@ export function listRooms(db: Db): RoomRow[] {
   return db.prepare('SELECT * FROM rooms ORDER BY created_at DESC').all() as RoomRow[];
 }
 
+/** Single-home product: the first-created room is the active one. */
+export function getPrimaryRoom(db: Db): RoomRow | undefined {
+  return db.prepare('SELECT * FROM rooms ORDER BY created_at ASC LIMIT 1').get() as
+    | RoomRow
+    | undefined;
+}
+
 export function setRoomStatus(db: Db, roomId: string, status: RoomStatus): RoomRow | undefined {
   db.prepare('UPDATE rooms SET status = ?, updated_at = ? WHERE room_id = ?').run(
     status,

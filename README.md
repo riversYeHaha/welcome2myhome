@@ -31,10 +31,11 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 ## 当前状态
 
 - 文档：PRD 已定稿，技术方案与开发计划已按独立评审意见修订。
-- 代码：S0（T101–T103）、**T104 数据访问层**、**T201/T202 主人 PIN / 会话 / CSRF / localOnly**、**T203 房间状态机**已完成。
-- 主人端 API 已可用：`/api/host/status|setup|login|logout|me|pin`、`/api/room/:id`、`PATCH /api/room/:id/status`（登录页 UI 在 T901 接入）。
-- 已验证：`typecheck`、`lint`、`test`（26 个用例）、`build`、`start`、`dev`；生产形态下完成「setup → 会话 → 房间 → draft→live」冒烟。
-- 下一步：T301/T302 token/短码/二维码 → T401/T402 E1 全量响应与 SSR 卡片页 → T403/T404 discover 与会话恢复。
+- 代码：S0（T101–T103）、**T104 数据访问层**、**T201–T203 主人 PIN / 会话 / CSRF / localOnly / 房间状态机**、**T301–T303 卡片 token / 短码 / 二维码 / 短码解析**已完成。
+- 主人端 API：`/api/host/status|setup|login|logout|me|pin`、`/api/room/:id`、`PATCH /api/room/:id/status|network`、`POST /api/dolls/:id/backup-token`（登录页 UI 在 T901 接入）。
+- 客人端 API：`POST /api/play/shortcode`、`GET /api/cards/:dollId/qr.png`、`GET /api/cards/welcome.png`。
+- 已验证：`typecheck`、`lint`、`test`（36 个用例）、`build`、`start`、`dev`；生产形态完成「setup → 会话 → 房间 → 二维码 / 短码」冒烟。
+- 下一步：T401/T402 E1 全量响应 + SSR 卡片页 → T403/T404 discover 幂等与会话恢复。
 
 ## 目录结构
 
