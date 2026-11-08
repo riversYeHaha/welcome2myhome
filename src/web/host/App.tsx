@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { HostRoom, HostRoomDetail } from '@shared/host';
 import type { RoomStatus } from '@shared/contracts';
 import { ApiError, hostApi, setCsrfToken, type HostStatus } from './api';
+import { Board } from './Board';
 import { DollEditor } from './DollEditor';
 import { FinaleEditor } from './FinaleEditor';
+import { OpsPanel } from './OpsPanel';
 
 const STATUS_LABEL: Record<RoomStatus, string> = {
   draft: '未开局',
@@ -353,6 +355,8 @@ export function App(): JSX.Element {
         </div>
       </section>
 
+      <Board roomId={room.room_id} status={room.status} />
+
       <section className="panel">
         <div className="panel-head">
           <h2>人偶（{detail.dolls.length}）</h2>
@@ -449,6 +453,13 @@ export function App(): JSX.Element {
           </div>
         )}
       </section>
+
+      <OpsPanel
+        room={room}
+        onCleared={async () => {
+          await refreshRoom();
+        }}
+      />
 
       {editing ? (
         <DollEditor

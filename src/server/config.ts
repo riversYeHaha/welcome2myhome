@@ -18,7 +18,17 @@ const ConfigSchema = z
         port: z.number().int().min(1).max(65535),
         host: z.string().min(1),
         allowLanAdmin: z.boolean(),
+        /** Exact origins allowed to call the API cross-origin; empty = closed. */
         corsAllowlist: z.array(z.string().url()).default([]),
+        /** Per-IP sliding-window limits for the public guest entry points. */
+        rateLimit: z
+          .object({
+            joinPerMin: z.number().int().positive().default(30),
+            shortcodePerMin: z.number().int().positive().default(30),
+            cardPerMin: z.number().int().positive().default(30),
+          })
+          .strict()
+          .default({ joinPerMin: 30, shortcodePerMin: 30, cardPerMin: 30 }),
       })
       .strict(),
     room: z

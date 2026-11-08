@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppConfig } from '../config';
 import type { Db } from '../db';
-import { createGuest, markFinaleReached } from '../db/repos/guests';
+import { createGuest, getGuest, markFinaleReached } from '../db/repos/guests';
 import { getDoll, getDollByAnyToken, getDollByShortCode } from '../db/repos/dolls';
 import {
   getProgress,
@@ -16,6 +16,7 @@ import {
 import { getRoomByCode, getRoomById } from '../db/repos/rooms';
 import type { DollRow, RoomRow } from '../db/rows';
 import { AppError } from '../lib/errors';
+import { CLIENT_EVENT_TYPES, emitEvent, type BoardHub } from '../lib/events';
 import { parseBody } from '../lib/http';
 import { publicHost } from '../lib/network';
 import { SlidingWindowLimiter } from '../lib/rate-limit';
@@ -36,6 +37,7 @@ export interface PlayRouteOptions {
   config: AppConfig;
   db: Db;
   secret: Buffer;
+  hub: BoardHub;
 }
 
 const ShortcodeBody = z
@@ -77,6 +79,16 @@ const AnswerBody = z.union([
 ]);
 
 const COLLECTED_STATES = new Set(['collected', 'egg_answering', 'egg_unlocked']);
+
+const TelemetryBody = z
+  .object({
+    type: z.enum(CLIENT_EVENT_TYPES),
+    doll_id: z.string().min(1).max(40).optional(),
+    payload: z
+      .record(z.union([z.string().max(80), z.number(), z.boolean(), z.null()]))
+      .optional(),
+  })
+  .strict();
 
 function finaleHint(room: RoomRow): {
   enabled: boolean;
@@ -143,6 +155,37 @@ export async function playRoutes(
 
   const burstLimiter = new SlidingWindowLimiter(options.config.judge.burstPer30s, 30_000);
   const guestLimiter = new SlidingWindowLimiter(options.config.judge.perGuestPerMin, 60_000);
+  const telemetryLimiter = new SlidingWindowLimiter(120, 60_000);
+
+  function note(
+    roomId: string,
+    type: string,
+    guestId: string,
+    extra: { dollId?: string | null; payload?: Record<string, unknown> } = {},
+  ): void {
+    emitEvent(options.db, options.hub, {
+      roomId,
+      type,
+      guestId,
+      dollId: extra.dollId ?? null,
+      payload: extra.payload,
+    });
+  }
+
+  /** Idempotent finale bookkeeping; emits only on the first success. */
+  function settleFinale(room: RoomRow, guestId: string): ReturnType<typeof evaluateFinale> {
+    const evaluation = evaluateFinale(options.db, room, guestId);
+    if (!evaluation.reached) return evaluation;
+
+    const seen = Boolean(getGuest(options.db, guestId)?.finale_reached_at);
+    markFinaleReached(options.db, guestId);
+    if (!seen) {
+      note(room.room_id, 'finale_reached', guestId, {
+        payload: { trigger: evaluation.config.trigger.type, remaining: 0 },
+      });
+    }
+    return evaluation;
+  }
 
   app.post('/api/play/shortcode', async (request) => {
     const body = parseBody(ShortcodeBody, request.body);
@@ -180,6 +223,9 @@ export async function playRoutes(
       deviceHint: body.device_hint ?? '',
     });
     const { token } = createGuestSession(options.secret, guest.guest_id, room.room_id);
+    note(room.room_id, 'guest_join', guest.guest_id, {
+      payload: { nickname: guest.nickname, channel: 'join' },
+    });
 
     reply.header('set-cookie', guestCookie(token));
 
@@ -224,6 +270,10 @@ export async function playRoutes(
 
     // Scanning is the "discovered" write (idempotent; powers the host board).
     upsertDiscovered(options.db, room.room_id, session.guestId, doll.doll_id);
+    note(room.room_id, 'card_scanned', session.guestId, {
+      dollId: doll.doll_id,
+      payload: { doll_id: doll.doll_id, short_code: doll.short_code },
+    });
 
     return buildE1View(options.db, options.config, options.secret, session, doll);
   });
@@ -249,8 +299,12 @@ export async function playRoutes(
     const updated = markCollected(options.db, room.room_id, session.guestId, doll.doll_id);
     const summary = collectionSummary(options.db, room.room_id, session.guestId);
 
-    const evaluation = evaluateFinale(options.db, room, session.guestId);
-    if (evaluation.reached) markFinaleReached(options.db, session.guestId);
+    note(room.room_id, 'progress', session.guestId, {
+      dollId: doll.doll_id,
+      payload: { doll_id: doll.doll_id, state: updated.state, already },
+    });
+
+    const evaluation = settleFinale(room, session.guestId);
 
     return {
       state: updated.state,
@@ -283,6 +337,10 @@ export async function playRoutes(
 
     if (current.state === 'collected') {
       startEgg(options.db, room.room_id, session.guestId, doll.doll_id);
+      note(room.room_id, 'egg_challenge_started', session.guestId, {
+        dollId: doll.doll_id,
+        payload: { doll_id: doll.doll_id },
+      });
     }
 
     const updated = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
@@ -314,6 +372,10 @@ export async function playRoutes(
 
     if (current.state !== 'egg_unlocked') {
       skipEgg(options.db, room.room_id, session.guestId, doll.doll_id);
+      note(room.room_id, 'progress', session.guestId, {
+        dollId: doll.doll_id,
+        payload: { doll_id: doll.doll_id, state: 'collected', skipped: true },
+      });
     }
 
     const updated = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
@@ -421,6 +483,14 @@ export async function playRoutes(
         session.guestId,
         doll.doll_id,
       );
+      note(room.room_id, 'answer_submit', session.guestId, {
+        dollId: doll.doll_id,
+        payload: {
+          doll_id: doll.doll_id,
+          correct: false,
+          attempts: updated?.attempts ?? current.attempts + 1,
+        },
+      });
       return {
         correct: false as const,
         wrong_text: doll.wrong_text || '还差一点点，再想想那天……',
@@ -435,6 +505,15 @@ export async function playRoutes(
     const updated = unlockEgg(options.db, room.room_id, session.guestId, doll.doll_id);
     if (!updated) throw new AppError('JUDGE_UNAVAILABLE', 503, '故事稍后再来', true);
 
+    note(room.room_id, 'answer_submit', session.guestId, {
+      dollId: doll.doll_id,
+      payload: { doll_id: doll.doll_id, correct: true, attempts: updated.attempts },
+    });
+    note(room.room_id, 'egg2_unlocked', session.guestId, {
+      dollId: doll.doll_id,
+      payload: { doll_id: doll.doll_id },
+    });
+
     const ticket = signTicket(options.secret, {
       scope: 'secret',
       dollId: doll.doll_id,
@@ -442,8 +521,7 @@ export async function playRoutes(
       ttlSec: options.config.ticket.ttlSec,
     });
     const summary = collectionSummary(options.db, room.room_id, session.guestId);
-    const evaluation = evaluateFinale(options.db, room, session.guestId);
-    if (evaluation.reached) markFinaleReached(options.db, session.guestId);
+    const evaluation = settleFinale(room, session.guestId);
 
     return {
       ...secretResponse(doll, ticket),
@@ -452,4 +530,33 @@ export async function playRoutes(
     };
   });
 
+  /**
+   * Browser-reported moments the server cannot observe: E1 playback, replays,
+   * session completion and offline errors. Payloads stay whitelisted.
+   */
+  app.post('/api/play/telemetry', async (request, reply) => {
+    const session = requireGuest(request, deps);
+    const body = parseBody(TelemetryBody, request.body);
+
+    if (!telemetryLimiter.allow(session.guestId)) {
+      reply.header('retry-after', String(telemetryLimiter.retryAfterSec(session.guestId)));
+      throw new AppError('RATE_LIMITED', 429, '上报太频繁了', true);
+    }
+
+    let dollId: string | null = null;
+    if (body.doll_id) {
+      const doll = getDoll(options.db, body.doll_id);
+      if (!doll || doll.room_id !== session.roomId) {
+        throw new AppError('DOLL_NOT_FOUND', 404, '人偶不存在');
+      }
+      dollId = doll.doll_id;
+    }
+
+    note(session.roomId, body.type, session.guestId, {
+      dollId,
+      payload: body.payload,
+    });
+
+    return reply.code(204).send();
+  });
 }

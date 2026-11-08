@@ -72,6 +72,7 @@ function init(root: HTMLElement): void {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let alreadyCollected = COLLECTED_STATES.has(root.dataset.state ?? '');
+  let plays = 0;
   let settled = false;
   let timers: number[] = [];
   let frame = 0;
@@ -306,9 +307,37 @@ function init(root: HTMLElement): void {
     document.body.appendChild(soundChip);
   }
 
+  // --- Telemetry (T1103): best-effort, never blocks the effect ---
+  function telemetry(type: string, payload: Record<string, unknown>): void {
+    if (preview) return;
+    try {
+      const dollId = root.dataset.dollId;
+      const body = JSON.stringify({
+        type,
+        ...(dollId ? { doll_id: dollId } : {}),
+        payload,
+      });
+      void fetch('/api/play/telemetry', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body,
+        keepalive: true,
+      }).catch(() => undefined);
+    } catch {
+      // Analytics must never break the reveal.
+    }
+  }
+
   // --- Timeline ---
   function startSequence(): void {
     clearTimers();
+    plays += 1;
+    telemetry(plays === 1 ? 'egg1_played' : 'egg1_replayed', {
+      effect: theme,
+      degraded: docEl.classList.contains('e1-degraded'),
+      first_frame_ms: Math.round(performance.now()),
+    });
     root.dataset.e1 = 'flip';
     addSweep();
     timers.push(
@@ -555,6 +584,7 @@ function init(root: HTMLElement): void {
       const data = (await response.json()) as { level?: { riddle?: RiddleView | null } };
       riddle = data.level?.riddle ?? null;
     } catch {
+      telemetry('network_error', { reason: 'fetch_failed', stage: 'quiz' });
       showMessage('网络好像断了，稍后再试。');
       return;
     }
@@ -677,6 +707,8 @@ function init(root: HTMLElement): void {
     docEl.classList.add('e1-degraded');
     settle();
   }
+
+  window.addEventListener('offline', () => telemetry('network_error', { reason: 'offline' }));
 
   // Watchdog: if the main thread is blocked past 300ms, skip the animation.
   const boot = performance.now();

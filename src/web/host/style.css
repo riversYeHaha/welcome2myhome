@@ -399,3 +399,290 @@ label.upload input {
   background: transparent;
   font-size: 11px;
 }
+
+/* --- Live board (FR-11) --- */
+.live-badge {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+}
+
+.live-badge.on {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+
+.live-badge.off {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, var(--line));
+}
+
+.board .stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 10px;
+  margin: 4px 0 18px;
+}
+
+.board .stat {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffaf3;
+  display: grid;
+  gap: 2px;
+}
+
+.board .stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.board .stat-label {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.board h3 {
+  margin: 22px 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+}
+
+.board-table {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1.3fr) 74px minmax(120px, 2fr) 84px;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #fffaf3;
+}
+
+.board-table.dolls .board-row {
+  grid-template-columns: minmax(120px, 1.6fr) repeat(4, 1fr);
+}
+
+.board-row.head {
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 12px;
+  padding-bottom: 2px;
+}
+
+.board-row .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.chip {
+  font-style: normal;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  background: #fff;
+}
+
+.chip.discovered {
+  border-color: #d8c39c;
+  color: #8a6a31;
+}
+
+.chip.collected {
+  border-color: #9ec4a9;
+  color: var(--ok);
+  background: #f2f9f4;
+}
+
+.chip.egg_answering {
+  border-color: #d9b46a;
+  color: #8a6320;
+  background: #fff8e8;
+}
+
+.chip.egg_unlocked {
+  border-color: var(--gold);
+  color: #fff;
+  background: var(--gold);
+}
+
+.board .online {
+  color: var(--ok);
+}
+
+.board .warn {
+  color: var(--err);
+}
+
+.board .tag {
+  font-style: normal;
+  font-size: 11px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.board .tag.gold {
+  color: #fff;
+  background: var(--gold);
+}
+
+.board .feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.board .feed li {
+  display: flex;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fffaf3;
+}
+
+.board .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.board .small {
+  font-size: 12px;
+  margin-top: 16px;
+}
+
+/* --- Ops panel (FR-01 / FR-13) --- */
+.ops .check-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.ops .check-list li {
+  display: flex;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #fffaf3;
+}
+
+.ops .check-list .mark {
+  width: 18px;
+  flex: none;
+  font-weight: 700;
+}
+
+.ops .check-list li.ok .mark {
+  color: var(--ok);
+}
+
+.ops .check-list li.bad {
+  background: #fdf1ef;
+}
+
+.ops .check-list li.bad .mark {
+  color: var(--err);
+}
+
+.ops .check-list .hint {
+  display: block;
+  font-style: normal;
+  color: var(--err);
+  font-size: 12px;
+}
+
+.ops .urls {
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.ops .urls p {
+  margin: 4px 0;
+}
+
+.ops .small,
+.board .small {
+  font-size: 12px;
+}
+
+.ops .ok {
+  color: var(--ok);
+}
+
+.ops .warn {
+  color: var(--err);
+}
+
+.ops h3 {
+  margin: 22px 0 6px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.ops .danger-title {
+  color: var(--err);
+}
+
+.ops .confirm-input {
+  min-width: 180px;
+}
+
+.board .rescue {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fffaf3;
+}
+
+.board .rescue summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.board .rescue-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.board .rescue-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.board .rescue-form select {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+}

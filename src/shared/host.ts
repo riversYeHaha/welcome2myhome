@@ -55,3 +55,55 @@ export interface HostRoomDetail {
   room: HostRoom;
   dolls: HostDoll[];
 }
+
+/** Host self check (FR-01/FR-21): LAN reachability and configuration readiness. */
+export interface SelfCheckItem {
+  id: string;
+  label: string;
+  ok: boolean;
+  hint?: string;
+}
+
+export interface SelfCheckResult {
+  room: {
+    room_id: string;
+    room_code: string;
+    title: string;
+    status: string;
+    lan_ip: string;
+    port: number;
+  };
+  server: {
+    node: string;
+    platform: string;
+    uptime_sec: number;
+    port: number;
+    host: string;
+  };
+  network: {
+    lan_ip: string;
+    detected_ip: string | null;
+    urls: Array<{ label: string; url: string }>;
+    hint: string;
+  };
+  data: {
+    db_bytes: number;
+    photos_bytes: number;
+    models_bytes: number;
+    dolls: number;
+    guests: number;
+    events: number;
+    missing_assets: number;
+  };
+  checks: SelfCheckItem[];
+}
+
+export interface ClearSummary {
+  progress: number;
+  guests: number;
+  events: number;
+  gen_tasks: number;
+  assets: number;
+  files: number;
+  bytes: number;
+}

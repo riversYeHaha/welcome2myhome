@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import type { Db } from '../db';
-import { getGuest } from '../db/repos/guests';
+import { getGuest, touchGuest } from '../db/repos/guests';
 import { parseCookies } from '../lib/cookies';
 import { signToken, verifyToken } from '../lib/crypto';
 import { AppError } from '../lib/errors';
@@ -74,6 +74,8 @@ export function readGuestSession(
 export function requireGuest(request: FastifyRequest, deps: GuestAuthDeps): GuestSession {
   const session = readGuestSession(request, deps);
   if (!session) throw new AppError('GUEST_UNAUTHORIZED', 401, '请先填写昵称');
+  // Powers the host board's "online" column; cheap single-row update.
+  touchGuest(deps.db, session.guestId);
   return session;
 }
 

@@ -1,3 +1,5 @@
+import { createReadStream, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { RoomStatus } from '../../shared/contracts';
@@ -12,6 +14,8 @@ import {
   updateDollBasics,
   updateDollLevel,
 } from '../db/repos/dolls';
+import { getGuest } from '../db/repos/guests';
+import { getProgress, upsertDiscovered } from '../db/repos/progress';
 import {
   createRoom,
   getRoomById,
@@ -23,6 +27,8 @@ import {
 import type { DollRow, RoomRow } from '../db/rows';
 import { hashSecret, verifySecret } from '../lib/crypto';
 import { AppError } from '../lib/errors';
+import { emitEvent, emitSignal, type BoardHub } from '../lib/events';
+import { nowIso } from '../lib/ids';
 import { parseBody } from '../lib/http';
 import { readMultipart } from '../lib/multipart';
 import { LoginThrottle } from '../lib/login-throttle';
@@ -35,6 +41,7 @@ import {
   parseFinaleConfig,
 } from '../services/finale';
 import { createDollWithCard, issueBackupToken } from '../services/cards';
+import { clearRoomData, exportConfig, selfCheck } from '../services/ops';
 import { createDollFromPhoto, getGenerationTask, ingestDollModel } from '../services/generation';
 import { renderCardsPrintPage } from '../views/cards-print';
 import { hashAnswer, normalizeAnswer } from '../services/judge';
@@ -52,6 +59,7 @@ export interface HostRouteOptions {
   config: AppConfig;
   db: Db;
   secret: Buffer;
+  hub: BoardHub;
 }
 
 const PinSchema = z.string().regex(/^\d{4,8}$/, 'PIN 必须是 4–8 位数字');
@@ -74,6 +82,15 @@ const NetworkBody = z
   .object({
     lan_ip: z.string().ip({ version: 'v4' }),
     port: z.number().int().min(1).max(65535).optional(),
+  })
+  .strict();
+
+const ClearBody = z.object({ confirm: z.literal('清空') }).strict();
+
+const UnlockBody = z
+  .object({
+    doll_id: z.string().min(1).max(40),
+    action: z.enum(['discover', 'unlock']).default('unlock'),
   })
   .strict();
 
@@ -635,6 +652,7 @@ export async function hostRoutes(
       opened_at: finale.opened_at ?? new Date().toISOString(),
     };
     const updated = setRoomFinaleJson(options.db, id, JSON.stringify(next));
+    emitSignal(options.hub, id, 'finale_open', { trigger: 'manual' });
 
     return { finale: parseFinaleConfig(updated?.finale_json ?? JSON.stringify(next)) };
   });
@@ -687,7 +705,139 @@ export async function hostRoutes(
     }
 
     const updated = setRoomStatus(options.db, id, body.status);
+    emitSignal(options.hub, id, 'room_status', { status: body.status });
     return { room: roomView(updated ?? room) };
+  });
+
+  app.get('/api/host/selfcheck', async (request) => {
+    const session = requireHost(request, deps);
+    const result = selfCheck(options.db, options.config, session.roomId);
+    if (!result) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+    return result;
+  });
+
+  app.get('/api/host/backup/config', async (request, reply) => {
+    const session = requireHost(request, deps);
+    const payload = exportConfig(options.db, session.roomId);
+    if (!payload) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const stamp = nowIso().slice(0, 10).replace(/-/g, '');
+    return reply
+      .type('application/json; charset=utf-8')
+      .header('cache-control', 'no-store')
+      .header('content-disposition', `attachment; filename="wtm-config-${stamp}.json"`)
+      .send(JSON.stringify(payload, null, 2));
+  });
+
+  /**
+   * Consistent SQLite snapshot via `VACUUM INTO`; keeps the last five snapshots
+   * in data/backups. Restoring is an offline file swap (documented in ops docs).
+   */
+  app.get('/api/host/backup/db', async (request, reply) => {
+    requireHost(request, deps);
+
+    const stamp = nowIso().replace(/[:.]/g, '-').slice(0, 19);
+    const name = `wtm-backup-${stamp}.db`;
+    const file = join(options.config.paths.backups, name);
+    try {
+      options.db.prepare('VACUUM INTO ?').run(file);
+    } catch (error) {
+      request.log.error({ err: error }, 'database backup failed');
+      throw new AppError('BACKUP_FAILED', 500, '备份失败，请稍后重试', true);
+    }
+
+    try {
+      const backups = readdirSync(options.config.paths.backups)
+        .filter((entry) => entry.startsWith('wtm-backup-') && entry.endsWith('.db'))
+        .sort();
+      for (const stale of backups.slice(0, Math.max(0, backups.length - 5))) {
+        unlinkSync(join(options.config.paths.backups, stale));
+      }
+    } catch {
+      // Pruning is best-effort.
+    }
+
+    if (!existsSync(file)) throw new AppError('BACKUP_FAILED', 500, '备份失败', true);
+    return reply
+      .type('application/octet-stream')
+      .header('cache-control', 'no-store')
+      .header('content-disposition', `attachment; filename="${name}"`)
+      .send(createReadStream(file));
+  });
+
+  /** FR-13: wipe guests, progress, analytics and media; keep the room config. */
+  app.delete('/api/room/:id/data', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    if (id !== session.roomId) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    parseBody(ClearBody, request.body);
+    const cleared = clearRoomData(options.db, options.config, id);
+    emitSignal(options.hub, id, 'room_status', { status: 'draft', cleared: true });
+    request.log.info({ roomId: id, ...cleared }, 'room data cleared');
+
+    return { cleared };
+  });
+
+  /** FR-12: rescue a guest whose card was lost, or force-open one secret. */
+  app.post('/api/room/:id/guests/:guestId/unlock', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id, guestId } = request.params as { id: string; guestId: string };
+    if (id !== session.roomId) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const body = parseBody(UnlockBody, request.body);
+    const guest = getGuest(options.db, guestId);
+    if (!guest || guest.room_id !== id) throw new AppError('GUEST_NOT_FOUND', 404, '客人不存在');
+
+    const doll = getDoll(options.db, body.doll_id);
+    if (!doll || doll.room_id !== id) throw new AppError('DOLL_NOT_FOUND', 404, '人偶不存在');
+
+    const now = nowIso();
+    if (body.action === 'discover') {
+      upsertDiscovered(options.db, id, guestId, doll.doll_id);
+      emitEvent(options.db, options.hub, {
+        roomId: id,
+        type: 'progress',
+        guestId,
+        dollId: doll.doll_id,
+        payload: { doll_id: doll.doll_id, state: 'discovered', by: 'host' },
+      });
+    } else {
+      options.db
+        .prepare(
+          `INSERT INTO progress
+             (room_id, guest_id, doll_id, state, attempts, egg_skipped,
+              discovered_at, collected_at, egg_unlocked_at, updated_at)
+           VALUES (?, ?, ?, 'egg_unlocked', 0, 0, ?, ?, ?, ?)
+           ON CONFLICT(room_id, guest_id, doll_id) DO UPDATE SET
+             state = 'egg_unlocked',
+             discovered_at = COALESCE(progress.discovered_at, excluded.discovered_at),
+             collected_at = COALESCE(progress.collected_at, excluded.collected_at),
+             egg_unlocked_at = COALESCE(progress.egg_unlocked_at, excluded.egg_unlocked_at),
+             updated_at = excluded.updated_at`,
+        )
+        .run(id, guestId, doll.doll_id, now, now, now, now);
+
+      emitEvent(options.db, options.hub, {
+        roomId: id,
+        type: 'egg2_unlocked',
+        guestId,
+        dollId: doll.doll_id,
+        payload: { doll_id: doll.doll_id, by: 'host' },
+      });
+    }
+
+    const progress = getProgress(options.db, id, guestId, doll.doll_id);
+    return {
+      guest_id: guestId,
+      doll_id: doll.doll_id,
+      state: progress?.state ?? 'discovered',
+      attempts: progress?.attempts ?? 0,
+    };
   });
 
 }

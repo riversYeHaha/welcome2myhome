@@ -28,6 +28,7 @@ export function renderFinalePage(data: {
   ${content.image_url ? `<img class="finale-image" src="${escapeHtml(content.image_url)}" alt="" />` : ''}
   ${content.reward_note ? `<p class="reward">${escapeHtml(content.reward_note)}</p>` : ''}
   ${content.share_caption ? `<p class="tagline">${escapeHtml(content.share_caption)}</p>` : ''}
+  <p class="share-row"><a class="button" href="/api/share/card.png" download="welcome-home-share.png">保存分享卡</a></p>
   <p class="foot"><a href="/collection">回收藏册</a></p>
 </main>`,
   });

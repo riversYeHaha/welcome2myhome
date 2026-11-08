@@ -136,3 +136,31 @@ h1 {
   border: 1px solid #4a382c;
   color: var(--gold);
 }
+
+/* Guest-page actions (share card, finale links) */
+.share-row {
+  display: flex;
+  justify-content: center;
+  margin: 24px 0 4px;
+}
+
+.button {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #fff;
+  font-size: 14px;
+  text-decoration: none;
+  border: 1px solid var(--gold);
+}
+
+.button:hover {
+  filter: brightness(1.05);
+  text-decoration: none;
+}
+
+.button.ghost {
+  background: transparent;
+  color: var(--gold);
+}

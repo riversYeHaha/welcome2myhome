@@ -13,6 +13,18 @@ type LogRes = {
 };
 
 /**
+ * Redact bearer-ish secrets from a request URL before it reaches the log file.
+ *
+ * The query string is dropped entirely (`?t=<ticket>`), and card tokens in the
+ * path are replaced (`/d/<token>`, `/api/play/d/<token>`). The pathname itself
+ * is kept so access logs stay useful.
+ */
+export function redactLogPath(url: string): string {
+  const pathname = (url.split('?')[0] ?? '').split('#')[0] ?? '';
+  return pathname.replace(/(^|\/)d\/[^/]+/g, '$1d/[redacted]');
+}
+
+/**
  * Fastify/pino logger options.
  *
  * Redaction matters: tickets and guest tokens live in headers or query strings.
@@ -37,7 +49,7 @@ export function buildLoggerOptions(config: AppConfig, options: { pretty: boolean
         return {
           id: req.id,
           method: req.method,
-          path: (req.url ?? '').split('?')[0],
+          path: redactLogPath(req.url ?? ''),
           ip: req.ip,
         };
       },

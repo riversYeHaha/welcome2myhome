@@ -11,8 +11,11 @@ import Fastify, {
 import type { AppConfig } from './config';
 import type { Db } from './db';
 import { AppError } from './lib/errors';
+import { createBoardHub } from './lib/events';
 import { buildLoggerOptions } from './lib/logger';
+import { registerSecurityHooks } from './lib/security';
 import { assetRoutes } from './routes/assets';
+import { boardRoutes } from './routes/board';
 import { cardRoutes } from './routes/cards';
 import { collectionRoutes } from './routes/collection';
 import { finaleRoutes } from './routes/finale';
@@ -53,11 +56,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.decorate('config', config);
   app.decorate('db', db);
 
-  app.addHook('onSend', async (_request, reply, payload) => {
-    reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'no-referrer');
-    return payload;
-  });
+  // Security baseline (FR-47): CSP + policy headers, CORS allowlist and per-IP
+  // rate limiting. Registered before routes so every response carries it,
+  // including SSR pages and hijacked SSE streams.
+  registerSecurityHooks(app, config);
 
   // Error handler must be installed before routes are registered: Fastify
   // resolves the handler per route at registration time.
@@ -101,14 +103,17 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   });
 
+  const boardHub = createBoardHub();
+
   await app.register(healthRoutes, { version });
-  await app.register(hostRoutes, { config, db, secret });
+  await app.register(hostRoutes, { config, db, secret, hub: boardHub });
   await app.register(cardRoutes, { db });
-  await app.register(playRoutes, { config, db, secret });
+  await app.register(playRoutes, { config, db, secret, hub: boardHub });
   await app.register(guestPages, { config, db, secret });
   await app.register(finaleRoutes, { db, secret });
-  await app.register(collectionRoutes, { config, db, secret });
+  await app.register(collectionRoutes, { config, db, secret, hub: boardHub });
   await app.register(assetRoutes, { config, db, secret });
+  await app.register(boardRoutes, { config, db, secret, hub: boardHub });
 
   const webRoot = config.paths.web;
   if (existsSync(join(webRoot, 'index.html'))) {

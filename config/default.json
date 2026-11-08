@@ -3,7 +3,12 @@
     "port": 8080,
     "host": "0.0.0.0",
     "allowLanAdmin": false,
-    "corsAllowlist": []
+    "corsAllowlist": [],
+    "rateLimit": {
+      "joinPerMin": 30,
+      "shortcodePerMin": 30,
+      "cardPerMin": 30
+    }
   },
   "room": {
     "defaultGameMode": "solo",

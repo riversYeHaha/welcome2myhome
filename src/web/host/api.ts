@@ -1,5 +1,6 @@
+import type { BoardSnapshot } from '@shared/board';
 import type { FinaleConfig } from '@shared/finale';
-import type { HostDoll, HostRoom, HostRoomDetail } from '@shared/host';
+import type { ClearSummary, HostDoll, HostRoom, HostRoomDetail, SelfCheckResult } from '@shared/host';
 import type { LevelType } from '@shared/levels';
 
 export interface HostStatus {
@@ -115,6 +116,8 @@ export const hostApi = {
   logout: () => request<void>('/api/host/logout', { method: 'POST' }),
   me: () => request<AuthResponse>('/api/host/me'),
   room: (roomId: string) => request<HostRoomDetail>(`/api/room/${roomId}`),
+  board: (roomId: string) =>
+    request<{ board: BoardSnapshot }>(`/api/board/${roomId}`),
   createDoll: (body: {
     name: string;
     tagline?: string;
@@ -161,6 +164,17 @@ export const hostApi = {
     }),
   openFinale: (roomId: string) =>
     request<FinaleResponse>(`/api/room/${roomId}/finale/open`, { method: 'POST' }),
+  selfCheck: () => request<SelfCheckResult>('/api/host/selfcheck'),
+  clearData: (roomId: string, confirm: string) =>
+    request<{ cleared: ClearSummary }>(`/api/room/${roomId}/data`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm }),
+    }),
+  unlockGuest: (roomId: string, guestId: string, dollId: string, action: 'discover' | 'unlock') =>
+    request<{ state: string }>(`/api/room/${roomId}/guests/${guestId}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify({ doll_id: dollId, action }),
+    }),
 };
 
 /** P2 types are shown but disabled in the editor. */

@@ -50,6 +50,7 @@ export function renderCollectionPage(data: GuestCollection): string {
     <h2>终局</h2>
     ${finale}
   </section>
+  <p class="share-row"><a class="button ghost" href="/api/share/card.png" download="welcome-home-share.png">保存分享卡</a></p>
   <p class="foot"><a href="/">回首页</a></p>
 </main>`;
 
