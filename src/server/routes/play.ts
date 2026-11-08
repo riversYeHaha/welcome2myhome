@@ -4,11 +4,20 @@ import type { AppConfig } from '../config';
 import type { Db } from '../db';
 import { createGuest } from '../db/repos/guests';
 import { getDoll, getDollByAnyToken, getDollByShortCode } from '../db/repos/dolls';
-import { getProgress, markCollected, upsertDiscovered } from '../db/repos/progress';
+import {
+  getProgress,
+  markCollected,
+  recordAttempt,
+  skipEgg,
+  startEgg,
+  unlockEgg,
+  upsertDiscovered,
+} from '../db/repos/progress';
 import { getRoomByCode, getRoomById } from '../db/repos/rooms';
-import type { RoomRow } from '../db/rows';
+import type { DollRow, RoomRow } from '../db/rows';
 import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
+import { SlidingWindowLimiter } from '../lib/rate-limit';
 import { cardUrl, normalizeShortCode } from '../services/cards';
 import {
   createGuestSession,
@@ -17,7 +26,9 @@ import {
   readGuestToken,
   requireGuest,
 } from '../services/guest-auth';
+import { verifyAnswer } from '../services/judge';
 import { buildE1View, collectionSummary } from '../services/play';
+import { signTicket } from '../services/ticket';
 
 export interface PlayRouteOptions {
   config: AppConfig;
@@ -43,6 +54,25 @@ const JoinBody = z
 const DiscoverBody = z
   .object({ doll_id: z.string().min(1).max(40) })
   .strict();
+
+const EggBody = z
+  .object({ doll_id: z.string().min(1).max(40) })
+  .strict();
+
+const AnswerBody = z.union([
+  z
+    .object({
+      doll_id: z.string().min(1).max(40),
+      choice_index: z.number().int().min(0),
+    })
+    .strict(),
+  z
+    .object({
+      doll_id: z.string().min(1).max(40),
+      answer_text: z.string().max(200),
+    })
+    .strict(),
+]);
 
 const COLLECTED_STATES = new Set(['collected', 'egg_answering', 'egg_unlocked']);
 
@@ -72,11 +102,41 @@ function countDolls(db: Db, roomId: string): number {
     .n;
 }
 
+function parseOptions(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function secretResponse(doll: DollRow, ticket: string) {
+  return {
+    correct: true as const,
+    secret_ticket: ticket,
+    secret: {
+      story: doll.secret_story,
+      whisper: doll.secret_whisper,
+      effect: doll.secret_effect,
+      star: doll.secret_star === 1,
+      model_url: doll.secret_model_url
+        ? `/api/assets/${encodeURIComponent(doll.doll_id)}/secret-model?t=${encodeURIComponent(ticket)}`
+        : null,
+    },
+  };
+}
+
 export async function playRoutes(
   app: FastifyInstance,
   options: PlayRouteOptions,
 ): Promise<void> {
   const deps = { db: options.db, secret: options.secret };
+
+  const burstLimiter = new SlidingWindowLimiter(options.config.judge.burstPer30s, 30_000);
+  const guestLimiter = new SlidingWindowLimiter(options.config.judge.perGuestPerMin, 60_000);
 
   app.post('/api/play/shortcode', async (request) => {
     const body = parseBody(ShortcodeBody, request.body);
@@ -191,4 +251,170 @@ export async function playRoutes(
       finale: { reached: false, remaining: summary.remaining },
     };
   });
+  app.post('/api/play/egg/start', async (request) => {
+    const session = requireGuest(request, deps);
+    const body = parseBody(EggBody, request.body);
+
+    const doll = getDoll(options.db, body.doll_id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('DOLL_NOT_FOUND', 404, '人偶不存在');
+    }
+    const room = getRoomById(options.db, doll.room_id);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+    if (room.status !== 'live') {
+      throw new AppError('ROOM_NOT_LIVE', 403, '这一局还没开始或已结束');
+    }
+    if (doll.egg_enabled !== 1) {
+      throw new AppError('EGG_DISABLED', 409, '这张卡没有彩蛋题');
+    }
+
+    const current = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
+    if (!current || current.state === 'locked' || current.state === 'discovered') {
+      throw new AppError('EGG_NOT_READY', 409, '先收下 TA，再来听故事');
+    }
+
+    if (current.state === 'collected') {
+      startEgg(options.db, room.room_id, session.guestId, doll.doll_id);
+    }
+
+    const updated = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
+    return {
+      state: updated?.state ?? current.state,
+      attempts: updated?.attempts ?? current.attempts,
+      egg_skipped: updated?.egg_skipped === 1,
+    };
+  });
+
+  app.post('/api/play/egg/skip', async (request) => {
+    const session = requireGuest(request, deps);
+    const body = parseBody(EggBody, request.body);
+
+    const doll = getDoll(options.db, body.doll_id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('DOLL_NOT_FOUND', 404, '人偶不存在');
+    }
+    const room = getRoomById(options.db, doll.room_id);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+    if (room.status !== 'live') {
+      throw new AppError('ROOM_NOT_LIVE', 403, '这一局还没开始或已结束');
+    }
+
+    const current = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
+    if (!current || current.state === 'locked' || current.state === 'discovered') {
+      throw new AppError('EGG_NOT_READY', 409, '先收下 TA，再来听故事');
+    }
+
+    if (current.state !== 'egg_unlocked') {
+      skipEgg(options.db, room.room_id, session.guestId, doll.doll_id);
+    }
+
+    const updated = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
+    return {
+      state: updated?.state ?? current.state,
+      egg_skipped: updated?.egg_skipped === 1,
+    };
+  });
+
+  app.post('/api/play/answer', async (request, reply) => {
+    const session = requireGuest(request, deps);
+    const body = parseBody(AnswerBody, request.body);
+
+    const doll = getDoll(options.db, body.doll_id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('DOLL_NOT_FOUND', 404, '人偶不存在');
+    }
+    const room = getRoomById(options.db, doll.room_id);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+    if (room.status !== 'live') {
+      throw new AppError('ROOM_NOT_LIVE', 403, '这一局还没开始或已结束');
+    }
+    if (doll.egg_enabled !== 1 || doll.answer_hash.length === 0) {
+      throw new AppError('EGG_DISABLED', 409, '这张卡没有彩蛋题');
+    }
+
+    const current = getProgress(options.db, room.room_id, session.guestId, doll.doll_id);
+
+    // Reopening an unlocked egg is idempotent and does not consume attempts.
+    if (current?.state === 'egg_unlocked') {
+      const ticket = signTicket(options.secret, {
+        scope: 'secret',
+        dollId: doll.doll_id,
+        guestId: session.guestId,
+        ttlSec: options.config.ticket.ttlSec,
+      });
+      return secretResponse(doll, ticket);
+    }
+
+    if (!current || (current.state !== 'collected' && current.state !== 'egg_answering')) {
+      throw new AppError('EGG_NOT_READY', 409, '先收下 TA，再来听故事');
+    }
+
+    const burstKey = `${session.guestId}:${doll.doll_id}`;
+    const burstOk = burstLimiter.allow(burstKey);
+    const guestOk = guestLimiter.allow(session.guestId);
+    if (!burstOk || !guestOk) {
+      const retry = Math.max(
+        burstLimiter.retryAfterSec(burstKey),
+        guestLimiter.retryAfterSec(session.guestId),
+      );
+      reply.header('retry-after', String(retry));
+      throw new AppError('RATE_LIMITED', 429, '慢一点，歇口气再试', true);
+    }
+
+    let submitted: string;
+    if ('choice_index' in body) {
+      const choices = parseOptions(doll.options_json);
+      if (body.choice_index >= choices.length) {
+        throw new AppError('VALIDATION_FAILED', 422, '选项不存在');
+      }
+      submitted = choices[body.choice_index]!;
+    } else {
+      submitted = body.answer_text;
+    }
+
+    let correct = false;
+    try {
+      correct = verifyAnswer(submitted, doll.answer_hash, doll.synonyms_json);
+    } catch {
+      throw new AppError('JUDGE_UNAVAILABLE', 503, '故事稍后再来', true);
+    }
+
+    if (!correct) {
+      if (current.state === 'collected') {
+        startEgg(options.db, room.room_id, session.guestId, doll.doll_id);
+      }
+      const updated = recordAttempt(
+        options.db,
+        room.room_id,
+        session.guestId,
+        doll.doll_id,
+      );
+      return {
+        correct: false as const,
+        wrong_text: doll.wrong_text || '还差一点点，再想想那天……',
+        ...(doll.hint ? { hint: doll.hint } : {}),
+        attempts: updated?.attempts ?? current.attempts + 1,
+        max_attempts: doll.max_attempts,
+        can_retry: true,
+        can_skip: true,
+      };
+    }
+
+    const updated = unlockEgg(options.db, room.room_id, session.guestId, doll.doll_id);
+    if (!updated) throw new AppError('JUDGE_UNAVAILABLE', 503, '故事稍后再来', true);
+
+    const ticket = signTicket(options.secret, {
+      scope: 'secret',
+      dollId: doll.doll_id,
+      guestId: session.guestId,
+      ttlSec: options.config.ticket.ttlSec,
+    });
+    const summary = collectionSummary(options.db, room.room_id, session.guestId);
+
+    return {
+      ...secretResponse(doll, ticket),
+      collection: { found: summary.found, total: summary.total, eggs: summary.eggs },
+    };
+  });
+
 }

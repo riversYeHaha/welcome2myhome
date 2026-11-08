@@ -13,7 +13,7 @@ export interface AssetRouteOptions {
   secret: Buffer;
 }
 
-const KINDS = new Set(['base-model', 'photo']);
+const KINDS = new Set(['base-model', 'photo', 'secret-model']);
 
 /**
  * Ticket-protected base assets (tech design §4.4). E2 assets get their own
@@ -30,22 +30,25 @@ export async function assetRoutes(
     const ticket = (request.query as { t?: string }).t;
     if (!ticket) throw new AppError('TICKET_INVALID', 403, '缺少资产凭证');
 
-    verifyTicket(options.secret, ticket, { scope: 'base', dollId });
+    const scope = kind === 'secret-model' ? 'secret' : 'base';
+    verifyTicket(options.secret, ticket, { scope, dollId });
 
     const doll = getDoll(options.db, dollId);
     if (!doll) throw new AppError('NOT_FOUND', 404, '人偶不存在');
 
     const file =
-      kind === 'base-model'
-        ? join(options.config.paths.models, `${doll.doll_id}.glb`)
-        : join(options.config.paths.photos, `${doll.doll_id}_src.jpg`);
+      kind === 'secret-model'
+        ? join(options.config.paths.models, `${doll.doll_id}_alt.glb`)
+        : kind === 'base-model'
+          ? join(options.config.paths.models, `${doll.doll_id}.glb`)
+          : join(options.config.paths.photos, `${doll.doll_id}_src.jpg`);
 
     if (!existsSync(file)) {
       throw new AppError('ASSET_NOT_FOUND', 404, '资产还没准备好');
     }
 
     return reply
-      .type(kind === 'base-model' ? 'model/gltf-binary' : 'image/jpeg')
+      .type(kind === 'photo' ? 'image/jpeg' : 'model/gltf-binary')
       .header('cache-control', 'private, max-age=86400')
       .send(createReadStream(file));
   });
