@@ -16,3 +16,9 @@ config/local.json
 # logs / OS
 *.log
 .DS_Store
+
+# Playwright artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
