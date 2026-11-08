@@ -14,17 +14,29 @@
     "secretFile": "data/secret.key"
   },
   "judge": {
-    "scrypt": { "N": 16384, "r": 8, "p": 1 },
+    "scrypt": {
+      "N": 16384,
+      "r": 8,
+      "p": 1
+    },
     "burstPer30s": 6,
     "perGuestPerMin": 30
   },
   "effects": {
-    "particleTiers": [120, 60, 24],
+    "particleTiers": [
+      120,
+      60,
+      24
+    ],
     "watchdogMs": 300
   },
   "generation": {
     "provider": "manual",
-    "endpoint": "",
+    "endpoint": "https://api.aholo3d.cn",
+    "version": "G1",
+    "faceCount": 300000,
+    "enablePbr": true,
+    "pollIntervalMs": 2000,
     "blenderEnabled": false,
     "blenderPath": "",
     "timeoutSec": 300

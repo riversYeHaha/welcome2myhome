@@ -55,9 +55,13 @@ const ConfigSchema = z
     generation: z
       .object({
         provider: z.enum(['manual', 'lux3d']),
-        endpoint: z.string(),
+        endpoint: z.string().min(1),
         /** Env-only secret (`LUX3D_API_KEY`); never written to config files or logs. */
         apiKey: z.string().optional(),
+        version: z.enum(['G1', 'G1-Turbo']).default('G1'),
+        faceCount: z.number().int().min(10_000).max(300_000).default(300_000),
+        enablePbr: z.boolean().default(true),
+        pollIntervalMs: z.number().int().min(200).max(10_000).default(2_000),
         blenderEnabled: z.boolean(),
         blenderPath: z.string(),
         timeoutSec: z.number().int().positive(),

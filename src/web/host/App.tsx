@@ -150,10 +150,11 @@ export function App(): JSX.Element {
   }
 
   async function pollTask(taskId: string): Promise<void> {
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       try {
         const { task } = await hostApi.genTask(taskId);
+
         if (task.status === 'done' || task.status === 'failed') {
           await refreshRoom();
           setNotice(
@@ -163,11 +164,22 @@ export function App(): JSX.Element {
           );
           return;
         }
-        setNotice(`照片处理中：${task.stage} ${task.percent}%`);
+
+        if (task.stage === 'awaiting_upload') {
+          setNotice(
+            task.error
+              ? task.error
+              : '照片已处理；请上传 GLB 模型，或配置 Lux3D 后重试',
+          );
+          return;
+        }
+
+        setNotice(`生成中：${task.stage} ${task.percent}%`);
       } catch {
         return;
       }
     }
+    setNotice('生成可能仍在进行，稍后刷新页面查看');
   }
 
   async function uploadModel(dollId: string, file: File): Promise<void> {

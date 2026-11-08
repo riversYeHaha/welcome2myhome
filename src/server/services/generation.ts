@@ -8,6 +8,7 @@ import { getDoll, setDollGeneration } from '../db/repos/dolls';
 import type { DollRow, GenTaskRow } from '../db/rows';
 import { AppError } from '../lib/errors';
 import { createDollWithCard } from './cards';
+import { createLux3DClient } from './lux3d';
 
 const MAX_PHOTO_EDGE = 1536;
 
@@ -69,6 +70,86 @@ export interface CreatedDollWithTask {
   task: GenTaskRow;
 }
 
+export interface Lux3DProvider {
+  uploadImage(buffer: Buffer, filename?: string): Promise<string>;
+  createImgTo3D(
+    imageUrl: string,
+    options: { version: 'G1' | 'G1-Turbo'; faceCount: number; enablePbr: boolean },
+  ): Promise<string>;
+  waitForTask(
+    taskId: string,
+    onProgress?: (status: number, elapsedMs: number) => void,
+  ): Promise<string[]>;
+  download(url: string): Promise<Buffer>;
+  glbFromOutputs(outputs: string[]): string;
+}
+
+function messageOf(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.slice(0, 200);
+}
+
+/**
+ * Background Lux3D pipeline. Updates the task row at each stage and, on
+ * success, writes the GLB through the same ingestion path as manual uploads.
+ */
+export async function runLux3DGeneration(
+  db: Db,
+  config: AppConfig,
+  doll: DollRow,
+  task: GenTaskRow,
+  photo: Buffer,
+  provider: Lux3DProvider,
+): Promise<void> {
+  const progress = (
+    stage: string,
+    percent: number,
+    status: GenTaskRow['status'] = 'running',
+  ): void => {
+    updateGenTask(db, task.task_id, { status, stage, percent, error: null });
+  };
+
+  try {
+    progress('uploading_image', 10);
+    const imageUrl = await provider.uploadImage(photo);
+
+    progress('creating_task', 20);
+    const providerTaskId = await provider.createImgTo3D(imageUrl, {
+      version: config.generation.version,
+      faceCount: config.generation.faceCount,
+      enablePbr: config.generation.enablePbr,
+    });
+
+    progress('generating', 30);
+    const outputs = await provider.waitForTask(providerTaskId, (status, elapsedMs) => {
+      const percent = Math.min(80, 30 + Math.floor(elapsedMs / 1000) * 2);
+      progress(`generating_${status}`, percent);
+    });
+
+    progress('downloading', 85);
+    const glbUrl = provider.glbFromOutputs(outputs);
+    const glb = await provider.download(glbUrl);
+
+    ingestDollModel(db, config, doll.doll_id, glb);
+    // The runner may be used with a doll created before its task; always close
+    // the task explicitly rather than relying on `doll.gen_task_id`.
+    updateGenTask(db, task.task_id, {
+      status: 'done',
+      stage: 'done',
+      percent: 100,
+      error: null,
+    });
+  } catch (error) {
+    updateGenTask(db, task.task_id, {
+      status: 'failed',
+      stage: 'failed',
+      percent: 100,
+      error: messageOf(error),
+    });
+    setDollGeneration(db, doll.doll_id, { genStatus: 'failed' });
+  }
+}
+
 /**
  * Create the doll, persist the normalized photo and open a generation task.
  * The manual provider stops at `awaiting_upload` until the host uploads a GLB.
@@ -96,17 +177,52 @@ export async function createDollFromPhoto(
     provider: config.generation.provider,
   });
 
+  const updatedDoll = setDollGeneration(db, doll.doll_id, {
+    genStatus: 'queued',
+    genTaskId: task.task_id,
+    sourcePhoto: photoPath,
+  });
+
+  if (config.generation.provider === 'lux3d') {
+    const client = createLux3DClient(config);
+    if (client) {
+      const running = updateGenTask(db, task.task_id, {
+        status: 'running',
+        stage: 'uploading_image',
+        percent: 10,
+        error: null,
+      });
+
+      void runLux3DGeneration(
+        db,
+        config,
+        updatedDoll ?? doll,
+        running ?? task,
+        photo.buffer,
+        client,
+      );
+
+      return {
+        doll: updatedDoll ?? doll,
+        task: running ?? task,
+      };
+    }
+
+    const manualFallback = updateGenTask(db, task.task_id, {
+      status: 'queued',
+      stage: 'awaiting_upload',
+      percent: 30,
+      error: 'LUX3D_API_KEY 未配置，已切换为手动上传 GLB',
+    });
+
+    return { doll: updatedDoll ?? doll, task: manualFallback ?? task };
+  }
+
   const awaiting = updateGenTask(db, task.task_id, {
     status: 'queued',
     stage: 'awaiting_upload',
     percent: 30,
     error: null,
-  });
-
-  const updatedDoll = setDollGeneration(db, doll.doll_id, {
-    genStatus: 'queued',
-    genTaskId: task.task_id,
-    sourcePhoto: photoPath,
   });
 
   return {
