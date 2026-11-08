@@ -3,6 +3,7 @@ import type { Db } from '../db';
 import { getDoll } from '../db/repos/dolls';
 import { getPrimaryRoom, getRoomById } from '../db/repos/rooms';
 import { AppError } from '../lib/errors';
+import { publicHost } from '../lib/network';
 import { cardUrl, qrPng, welcomeUrl } from '../services/cards';
 
 export interface CardRouteOptions {
@@ -26,7 +27,7 @@ export async function cardRoutes(
     const room = getRoomById(options.db, doll.room_id);
     if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
 
-    const png = await qrPng(cardUrl(room, doll.card_token, request.hostname));
+    const png = await qrPng(cardUrl(room, doll.card_token, publicHost(room, request.hostname)));
     return reply
       .type('image/png')
       .header('cache-control', 'public, max-age=300')
@@ -37,7 +38,7 @@ export async function cardRoutes(
     const room = getPrimaryRoom(options.db);
     if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间还没有创建');
 
-    const png = await qrPng(welcomeUrl(room, request.hostname));
+    const png = await qrPng(welcomeUrl(room, publicHost(room, request.hostname)));
     return reply
       .type('image/png')
       .header('cache-control', 'public, max-age=300')

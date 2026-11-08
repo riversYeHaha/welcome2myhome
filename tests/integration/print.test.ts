@@ -64,7 +64,8 @@ describe('card print sheet', () => {
     expect(response.body).toContain(`/api/cards/${secondDoll.doll_id}/qr.png`);
     expect(response.body).toContain(firstDoll.short_code);
     expect(response.body).toContain(secondDoll.short_code);
-    expect(response.body).toContain('尚未设置局域网地址');
+    // Setup auto-detects the LAN IP; the print header must show a real LAN URL.
+    expect(response.body).toMatch(/二维码地址：http:\/\/\d+\.\d+\.\d+\.\d+:\d+/);
     // Names are not printed on the card face (silhouette only).
     expect(response.body).not.toContain('阿黄');
   });

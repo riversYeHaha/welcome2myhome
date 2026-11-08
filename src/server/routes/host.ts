@@ -26,6 +26,7 @@ import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
 import { readMultipart } from '../lib/multipart';
 import { LoginThrottle } from '../lib/login-throttle';
+import { detectLanIp } from '../lib/network';
 import { isUniqueViolation } from '../lib/sqlite';
 import {
   FinaleInputSchema,
@@ -285,10 +286,21 @@ export async function hostRoutes(
 
     const pinHash = hashSecret(body.pin, options.config.judge.scrypt);
     const updated = setRoomHostPinHash(options.db, room.room_id, pinHash);
+    let withNetwork = updated ?? room;
+
+    if (!withNetwork.lan_ip) {
+      const lanIp = detectLanIp();
+      if (lanIp) {
+        withNetwork =
+          setRoomLanIp(options.db, room.room_id, lanIp, options.config.server.port) ??
+          withNetwork;
+      }
+    }
+
     const { token, session } = createHostSession(options.secret, room.room_id, pinHash);
 
     reply.header('set-cookie', sessionCookie(token));
-    return { room: roomView(updated ?? room), csrfToken: session.csrfToken };
+    return { room: roomView(withNetwork), csrfToken: session.csrfToken };
   });
 
   app.post('/api/host/login', async (request, reply) => {

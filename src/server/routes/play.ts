@@ -17,6 +17,7 @@ import { getRoomByCode, getRoomById } from '../db/repos/rooms';
 import type { DollRow, RoomRow } from '../db/rows';
 import { AppError } from '../lib/errors';
 import { parseBody } from '../lib/http';
+import { publicHost } from '../lib/network';
 import { SlidingWindowLimiter } from '../lib/rate-limit';
 import { cardUrl, normalizeShortCode } from '../services/cards';
 import {
@@ -160,7 +161,7 @@ export async function playRoutes(
 
     return {
       doll_id: doll.doll_id,
-      card_url: cardUrl(room, doll.card_token, request.hostname),
+      card_url: cardUrl(room, doll.card_token, publicHost(room, request.hostname)),
     };
   });
 

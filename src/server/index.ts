@@ -3,6 +3,8 @@ import { APP_VERSION, buildApp } from './app';
 import { ensureDataDirs, loadConfig } from './config';
 import { openDatabase } from './db';
 import { loadOrCreateSecret } from './lib/crypto';
+import { detectLanIp } from './lib/network';
+import { listRooms, setRoomLanIp } from './db/repos/rooms';
 import { migrate } from './db/migrate';
 
 async function main(): Promise<void> {
@@ -15,6 +17,15 @@ async function main(): Promise<void> {
     dbPath,
     backupDir: config.paths.backups,
   });
+
+  const lanIp = detectLanIp();
+  if (lanIp) {
+    for (const room of listRooms(db)) {
+      if (!room.lan_ip) {
+        setRoomLanIp(db, room.room_id, lanIp, config.server.port);
+      }
+    }
+  }
 
   const secretPath = isAbsolute(config.ticket.secretFile)
     ? config.ticket.secretFile
@@ -30,6 +41,7 @@ async function main(): Promise<void> {
       schemaVersion: version,
       appliedMigrations: applied,
       webRoot: config.paths.web,
+      lanIp: lanIp ?? null,
     },
     'welcome2myhome starting',
   );

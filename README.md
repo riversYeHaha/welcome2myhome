@@ -37,6 +37,7 @@ npm start          # 生产形态：Fastify 托管 API 与 dist/web
 - 已验证：`typecheck`、`lint`、`test`（81 个用例）、`build`、`start`、`dev`；生产形态完成「setup → 开局 → join → SSR 卡片 → E1 → E2 答题/secret → 收藏册 / 终局 / 卡片打印页」与 `/host/` 控制台冒烟。
 - 前端演出：`/effect.js` 约 11KB，覆盖 E1 时间轴/粒子/音效/降级与 E2 答题面板/金色收拢；真实设备视效与性能仍需 D3/D7 真机验收。
 - 卡片：A4 4-up 打印页（欢迎码 + 每卡二维码/短码/线索），浏览器打印或另存 PDF；服务端 PDF 生成留待后续。
+- 网络：二维码地址优先取房间 `lan_ip`，为空时自动探测物理网卡私网 IPv4（启动/初始化时写回），不再回退到 127.0.0.1；可在主人端手动覆盖。
 - 3D：`/viewer.js`（three.js，631KB / gzip 159KB）在卡片剪影与收藏册全屏查看中加载 GLB；暂无模型时显示程序化占位人偶，支持拖拽旋转/滚轮缩放，加载失败回退剪影。
 - 生成：上传照片（≤10MB）→ sharp 旋转/缩到 1536/剥离 EXIF → 生成任务。
   - `provider=manual`（默认）：停在 `awaiting_upload`，主人上传 GLB 后落盘并在 3D 展柜使用。
