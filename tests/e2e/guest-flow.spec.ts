@@ -100,12 +100,20 @@ test('guest scans, collects, reaches the finale and shares a card', async ({
   await guestPage.goto(`/join?r=${roomCode}`);
   await guestPage.getByLabel('昵称').fill('小林');
   await guestPage.getByRole('button', { name: '进入我的家' }).click();
-  await expect(guestPage.locator('body')).toContainText('欢迎来到我的家');
+  // '/' now routes a signed-in guest straight to the collection (welcome code).
+  await expect(guestPage).toHaveURL(/\/collection$/);
+  await expect(guestPage.getByRole('heading', { name: /今晚，你见到了 0 \/ 2 位/ })).toBeVisible();
 
   // Card 1: E1 settles immediately under reduced motion, then auto-collects.
   await guestPage.goto(`/d/${encodeURIComponent(first!.card_token)}`);
   await expect(guestPage.getByRole('heading', { name: first!.name })).toBeVisible();
   await expect(guestPage.getByText('已收入收藏册')).toBeVisible({ timeout: 20_000 });
+
+  // Tap the doll: a preset line appears in a bubble (D).
+  await guestPage.locator('.silhouette canvas').click({ position: { x: 60, y: 70 } });
+  await expect(guestPage.locator('.doll-bubble.doll-bubble-show')).toBeVisible();
+  await expect(guestPage.locator('.doll-bubble')).toContainText(/./);
+
   await guestPage.screenshot({ path: `${SCREENSHOTS}/e1-card.png`, fullPage: true });
 
   // Card 2.
@@ -150,6 +158,37 @@ test('guest scans, collects, reaches the finale and shares a card', async ({
 
   expect(guestErrors.filter((item) => item.includes('Content Security Policy'))).toEqual([]);
   await guest.close();
+});
+
+test('short code entry lands on the card without scanning', async ({ browser, page }) => {
+  await page.goto('/host/');
+  await page.getByLabel(/PIN/).fill('2468');
+  await page.getByRole('button', { name: '登录' }).click();
+  await expect(page.getByRole('heading', { name: 'E2E 的家' })).toBeVisible();
+
+  const me = await (await page.context().request.get('/api/host/me')).json();
+  const detail = await (
+    await page.context().request.get(`/api/room/${me.room.room_id}`)
+  ).json();
+  const shortCode = detail.dolls[0].short_code as string;
+  const token = detail.dolls[0].card_token as string;
+  const code = me.room.room_code as string;
+  const origin = new URL(page.url()).origin;
+
+  const guestContext = await browser.newContext({
+    baseURL: origin,
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+  });
+  const guestPage = await guestContext.newPage();
+  await guestPage.goto(`/join?r=${code}`);
+  await guestPage.getByLabel('昵称').fill('短码客人');
+  await guestPage.getByLabel('卡片短码（可选）').fill(shortCode.toLowerCase());
+  await guestPage.getByRole('button', { name: '进入我的家' }).click();
+
+  await expect(guestPage).toHaveURL(new RegExp(`/d/${token}$`));
+  await expect(guestPage.getByRole('heading', { name: detail.dolls[0].name })).toBeVisible();
+  await guestContext.close();
 });
 
 test('no-JS guest can still collect with the fallback form', async ({ browser, page }) => {

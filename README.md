@@ -27,16 +27,18 @@ npm run test:e2e   # Playwright 手机视口全链路（复用本机 Chrome；CI
 
 - 首次启动会自动创建 `data/`、`data/home.db` 并执行 schema v1 迁移。
 - 配置：`config/default.json`，可加 `config/local.json` 覆盖；环境变量支持 `PORT`、`HOST`、`LOG_LEVEL`、`LUX3D_ENDPOINT`、`LUX3D_API_KEY`、`BLENDER_ENABLED`、`BLENDER_PATH`。
+- 可选：`{"effects":{"autoQuiz":true}}` 让 E1 结束后自动弹出彩蛋题（默认关闭，保留「再听听」按钮）。
 - 健康检查：`GET /api/health`（返回服务版本与 DB schema 版本）。
 - 页面：客人端 `/`，主人端 `/host/`（PIN 登录后配置、看板、自检、备份）。
 
 ## 当前状态
 
-- **测试**：`npm run verify` → **146 tests / 29 files** 全绿；`npm run test:e2e` → **3 条 Playwright 用例**（手机视口，含无 JS 兜底）。
+- **测试**：`npm run verify` → **158 tests / 31 files** 全绿；`npm run test:e2e` → **4 条 Playwright 用例**（手机视口，含短码进入与无 JS 兜底）。
 - **已完成（P0 主链）**：
   - 基础/数据：T101–T104（TypeScript + Vite 双入口、Fastify、zod 配置、pino 脱敏、SQLite schema v1/迁移/备份、仓储层）。
   - 主人端：T201–T203 + T901–T904/T906（PIN scrypt、HttpOnly 会话、CSRF、localOnly、登录限流、房间状态机、人偶/关卡/彩蛋题/终局编辑、预览、卡片打印）。
   - 卡片与 E1：T301–T303、T401–T404、T501–T506（token/短码/二维码、SSR 卡片页、join/resume、discover、翻牌/粒子四主题/WebAudio/降级/重播）。
+  - 客人端入口：`GET /` 按会话直达 join / collection（欢迎码扫进来不再看到骨架页）、`/join` 支持卡片 6 位短码（FR-23）、E1 后答对换第二形态 3D 模型、人偶点触轻跳 + 预设气泡台词；`effects.autoQuiz` 可选自动弹题。
   - E2/终局/收藏：T701–T705、T801–T802、T603（判题、answer/egg start·skip、secret ticket、防爆破、四种终局触发、收藏册与终局页）。
   - 3D 与生成：T601、T1201–T1205（three.js 展柜 + 程序化占位、照片上传 sharp 处理、手动 GLB、Lux3D 图生 3D、GLB 结构校验、Draco 解码、Blender headless 清理/剪影、预置模型兜底）。
   - 看板与埋点：T1101–T1103（SSE + 5s 轮询兜底、在线客人、逐卡进度、错误统计、最近动态、JSONL 导出；`events` 表 + 浏览器 telemetry 上报）。
@@ -44,7 +46,7 @@ npm run test:e2e   # Playwright 手机视口全链路（复用本机 Chrome；CI
   - 分享卡：T803（1080×1440 PNG，已收集名字 + 未收集虚线位）。
   - 安全：FR-47/FR-48（CSP、XFO、COOP、Permissions-Policy、按需 HSTS、CORS 白名单、join/shortcode/卡片按 IP 限流、日志脱敏、X-Request-Id）。
 - **接口补充**：`GET /api/board/:room_id`、`GET /api/board/:room_id/stream`(SSE)、`POST /api/play/telemetry`、`GET /api/host/logs/export`、`GET /api/host/selfcheck`、`GET /api/host/backup/db|config`、`DELETE /api/room/:id/data`、`POST /api/room/:id/guests/:guestId/unlock`、`GET /api/share/card.png`。
-- **3D/生成现状**：`/viewer.js` 639KB（gzip 161KB），Draco 解码器自托管在 `/draco/`（离线可用）；Blender 默认关闭，需 `BLENDER_ENABLED=true` + `BLENDER_PATH=/Applications/Blender.app/Contents/MacOS/Blender`；`assets/presets/*.glb` 为空时兜底到程序化占位人偶。
+- **3D/生成现状**：`/viewer.js` 639KB（gzip 161KB），Draco 解码器自托管在 `/draco/`（离线可用），E2 第二形态模型复用同一场景切换；Blender 默认关闭，需 `BLENDER_ENABLED=true` + `BLENDER_PATH=/Applications/Blender.app/Contents/MacOS/Blender`；`assets/presets/*.glb` 为空时兜底到程序化占位人偶。
 - **尚未接**：服务端 PDF（当前为 A4 4-up 浏览器打印/另存 PDF）、真实 `LUX3D_API_KEY` 端到端联调、生成任务重启恢复/并发队列、iOS/Android/微信真机矩阵、多人关卡（race/coop/duo_scan/timed）、离线对话树/LLM 对话/记忆/TTS。
 - **网络**：二维码地址优先取房间 `lan_ip`，为空时自动探测物理网卡私网 IPv4（启动/初始化时写回），不再回退到 `127.0.0.1`；可在主人端手动覆盖。
 - **验收截图**：[E1 卡片](docs/screenshots/e1-card.png)、[终局](docs/screenshots/finale.png)、[现场看板](docs/screenshots/board.png)、[分享卡](docs/screenshots/share-card.png)。
