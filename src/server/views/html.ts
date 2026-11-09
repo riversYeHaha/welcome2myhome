@@ -94,6 +94,8 @@ a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
 .viewer-secret{padding:8px 18px;border-radius:999px;border:1px solid rgba(229,181,103,.55);background:rgba(229,181,103,.12);color:var(--gold);cursor:pointer}
 .viewer-secret[hidden]{display:none}
 .viewer-secret:disabled{opacity:.55;cursor:default}
+.doll-bubble{position:absolute;left:50%;top:8px;z-index:6;max-width:88%;padding:5px 12px;border-radius:999px;background:rgba(27,21,18,.92);border:1px solid rgba(229,181,103,.5);color:var(--gold);font-size:12px;white-space:nowrap;pointer-events:none;opacity:0;transform:translate(-50%,4px);transition:opacity .2s ease,transform .2s ease}
+.doll-bubble.doll-bubble-show{opacity:1;transform:translate(-50%,0)}
 `;
 
 const ESCAPES: Record<string, string> = {

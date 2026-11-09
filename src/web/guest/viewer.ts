@@ -16,6 +16,15 @@ interface ViewerHandle {
 
 const PALETTE = [0xe5b567, 0x7ed6a5, 0xf28b82, 0x8ab4f8, 0xd98acb];
 const MODEL_HEIGHT = 0.42;
+/** Tap reactions: short, non-spoiler lines; never secrets or story text. */
+const TAP_LINES = [
+  '我在呢。',
+  '再靠近一点。',
+  '谢谢你找到我。',
+  '这个家里还有好多小秘密。',
+  '戳一下就好，别把我看穿啦。',
+  '今晚，记得多待一会儿。',
+];
 /** Self-hosted decoder copied from three (`src/web/public/draco/`, no CDN). */
 const DRACO_DECODER_PATH = '/draco/';
 
@@ -141,6 +150,10 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
   rim.position.set(-1, 0.7, -0.9);
   scene.add(rim);
 
+  if (window.getComputedStyle(container).position === 'static') {
+    container.style.position = 'relative';
+  }
+
   const group = new THREE.Group();
   scene.add(group);
 
@@ -191,10 +204,41 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
   let lastX = 0;
   let lastY = 0;
   let autoRotate = true;
+  let tapStart = 0;
+  let downX = 0;
+  let downY = 0;
+  let taps = 0;
+  let pulseStart = 0;
+  let bubbleTimer = 0;
+
+  /** Tap (not drag) reaction: a little hop + one preset line in a bubble. */
+  function react(): void {
+    taps += 1;
+    pulseStart = performance.now();
+    let bubble = container.querySelector<HTMLDivElement>('.doll-bubble');
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.className = 'doll-bubble';
+      bubble.setAttribute('role', 'status');
+      container.append(bubble);
+    }
+    const line = TAP_LINES[(hashString(options.dollId) + taps) % TAP_LINES.length]!;
+    bubble.textContent = line;
+    bubble.classList.remove('doll-bubble-show');
+    void bubble.offsetWidth;
+    bubble.classList.add('doll-bubble-show');
+    window.clearTimeout(bubbleTimer);
+    bubbleTimer = window.setTimeout(() => {
+      bubble?.classList.remove('doll-bubble-show');
+    }, 2600);
+  }
 
   const onPointerDown = (event: PointerEvent): void => {
     dragging = true;
     autoRotate = false;
+    tapStart = performance.now();
+    downX = event.clientX;
+    downY = event.clientY;
     lastX = event.clientX;
     lastY = event.clientY;
     renderer.domElement.setPointerCapture(event.pointerId);
@@ -206,9 +250,14 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
     lastX = event.clientX;
     lastY = event.clientY;
   };
-  const onPointerUp = (): void => {
+  const onPointerUp = (event: PointerEvent): void => {
+    const wasTap =
+      dragging &&
+      performance.now() - tapStart < 400 &&
+      Math.hypot(event.clientX - downX, event.clientY - downY) < 10;
     dragging = false;
     autoRotate = true;
+    if (wasTap) react();
   };
   const onWheel = (event: WheelEvent): void => {
     event.preventDefault();
@@ -237,6 +286,17 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
     const delta = clock.getDelta();
     if (autoRotate && !dragging) group.rotation.y += delta * 0.35;
     group.position.y = Math.sin(performance.now() / 900) * 0.012;
+    if (pulseStart > 0) {
+      const t = (performance.now() - pulseStart) / 420;
+      if (t >= 1) {
+        pulseStart = 0;
+        group.scale.setScalar(1);
+        group.rotation.z = 0;
+      } else {
+        group.scale.setScalar(1 + Math.sin(t * Math.PI) * 0.09);
+        group.rotation.z = Math.sin(t * Math.PI * 2) * 0.05;
+      }
+    }
     renderer.render(scene, camera);
     frame = requestAnimationFrame(animate);
   }
@@ -262,6 +322,8 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
         if (Array.isArray(material)) material.forEach((item) => item.dispose());
         else material?.dispose();
       });
+      window.clearTimeout(bubbleTimer);
+      container.querySelector('.doll-bubble')?.remove();
       renderer.dispose();
       renderer.domElement.remove();
       container.classList.remove('viewer-ready');
