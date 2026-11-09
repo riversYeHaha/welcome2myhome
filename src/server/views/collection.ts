@@ -30,7 +30,8 @@ export function renderCollectionPage(data: GuestCollection): string {
   <button type="button" class="view-doll"
     data-doll-id="${escapeHtml(item.doll_id)}"
     data-name="${escapeHtml(item.name ?? '')}"
-    data-model-url="${escapeHtml(item.model_url ?? '')}">看看 TA</button>
+    data-model-url="${escapeHtml(item.model_url ?? '')}"
+    data-secret-model="${escapeHtml(item.secret_model_url ?? '')}">看看 TA</button>
 </article>`;
     })
     .join('');

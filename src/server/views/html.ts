@@ -91,6 +91,9 @@ a{color:var(--gold);text-decoration:none}a:hover{text-decoration:underline}
 .viewer-stage{width:min(72vw,72vh);height:min(72vw,72vh);min-width:220px;min-height:220px}
 .viewer-title{margin:0;color:var(--ink);font-size:14px;letter-spacing:.08em}
 .viewer-close{padding:8px 18px;border-radius:999px;border:1px solid #4a382c;background:transparent;color:var(--gold);cursor:pointer}
+.viewer-secret{padding:8px 18px;border-radius:999px;border:1px solid rgba(229,181,103,.55);background:rgba(229,181,103,.12);color:var(--gold);cursor:pointer}
+.viewer-secret[hidden]{display:none}
+.viewer-secret:disabled{opacity:.55;cursor:default}
 `;
 
 const ESCAPES: Record<string, string> = {

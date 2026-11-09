@@ -10,6 +10,8 @@ interface ViewerOptions {
 
 interface ViewerHandle {
   dispose: () => void;
+  /** Swap to another model (E2 second form) without rebuilding the scene. */
+  swapModel: (url: string) => void;
 }
 
 const PALETTE = [0xe5b567, 0x7ed6a5, 0xf28b82, 0x8ab4f8, 0xd98acb];
@@ -103,6 +105,9 @@ async function freshModelUrl(dollId: string): Promise<string | null> {
   }
 }
 
+/** Inline viewers by doll id, so the card page can swap to the secret form. */
+const inlineViewers = new Map<string, Set<ViewerHandle>>();
+
 function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHandle {
   const width = Math.max(container.clientWidth, 120);
   const height = Math.max(container.clientHeight, 160);
@@ -160,14 +165,18 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
     loaded = true;
   }
 
-  function load(url: string, retried = false): void {
+  /**
+   * `swap` loads a different model (E2 second form) and never retries with a
+   * fresh base URL, so a failed swap keeps the current doll on screen.
+   */
+  function load(url: string, retried = false, swap = false): void {
     const loader = createGltfLoader();
     loader.load(
       url,
       (gltf) => replaceWithModel(gltf.scene),
       undefined,
       () => {
-        if (retried) return;
+        if (retried || swap) return;
         void freshModelUrl(options.dollId).then((fresh) => {
           if (fresh && fresh !== url) load(fresh, true);
         });
@@ -233,7 +242,10 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
   }
   animate();
 
-  return {
+  const handle: ViewerHandle = {
+    swapModel: (url: string) => {
+      if (url) load(url, true, true);
+    },
     dispose: () => {
       disposed = true;
       cancelAnimationFrame(frame);
@@ -253,12 +265,45 @@ function createViewer(container: HTMLElement, options: ViewerOptions): ViewerHan
       renderer.dispose();
       renderer.domElement.remove();
       container.classList.remove('viewer-ready');
+      const set = inlineViewers.get(options.dollId);
+      set?.delete(handle);
+      if (set && set.size === 0) inlineViewers.delete(options.dollId);
       void loaded;
     },
   };
+
+  const set = inlineViewers.get(options.dollId) ?? new Set<ViewerHandle>();
+  set.add(handle);
+  inlineViewers.set(options.dollId, set);
+
+  return handle;
 }
 
-function openOverlay(dollId: string, name: string, modelUrl: string | null): void {
+/**
+ * Card page calls this after a correct answer to reveal the second form.
+ * Returns whether at least one inline viewer picked it up.
+ */
+export function swapDollModel(dollId: string, modelUrl: string): boolean {
+  const viewers = inlineViewers.get(dollId);
+  if (!viewers || viewers.size === 0) return false;
+  for (const viewer of viewers) viewer.swapModel(modelUrl);
+  return true;
+}
+
+declare global {
+  interface Window {
+    __wtmSwapModel?: (dollId: string, modelUrl: string) => boolean;
+  }
+}
+
+window.__wtmSwapModel = swapDollModel;
+
+function openOverlay(
+  dollId: string,
+  name: string,
+  modelUrl: string | null,
+  secretModelUrl: string | null,
+): void {
   const overlay = document.createElement('div');
   overlay.className = 'viewer-overlay';
 
@@ -275,7 +320,13 @@ function openOverlay(dollId: string, name: string, modelUrl: string | null): voi
   close.textContent = '收起';
   close.setAttribute('aria-label', '收起 3D 视图');
 
-  overlay.append(title, stage, close);
+  const secret = document.createElement('button');
+  secret.type = 'button';
+  secret.className = 'viewer-secret';
+  secret.textContent = '看第二形态';
+  secret.hidden = !secretModelUrl;
+
+  overlay.append(title, stage, secret, close);
   document.body.append(overlay);
 
   let viewer: ViewerHandle | null = null;
@@ -284,6 +335,13 @@ function openOverlay(dollId: string, name: string, modelUrl: string | null): voi
   } catch {
     stage.textContent = '这台设备暂时无法显示 3D 人偶。';
   }
+
+  secret.addEventListener('click', () => {
+    if (!secretModelUrl) return;
+    viewer?.swapModel(secretModelUrl);
+    secret.disabled = true;
+    secret.textContent = '已换成第二形态';
+  });
 
   const onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') closeOverlay();
@@ -323,6 +381,7 @@ function bindCollectionButtons(): void {
         button.dataset.dollId ?? 'doll',
         button.dataset.name ?? '',
         button.dataset.modelUrl || null,
+        button.dataset.secretModelUrl || null,
       );
     });
   }

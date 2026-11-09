@@ -449,6 +449,7 @@ function init(root: HTMLElement): void {
 
   function showSecret(secret: SecretPayload): void {
     closePanel();
+    const dollId = root.dataset.dollId ?? '';
     const panel = element('section', 'egg-panel golden');
     panel.setAttribute('role', 'dialog');
     panel.append(element('p', 'egg-eyebrow', '秘密彩蛋'));
@@ -464,7 +465,14 @@ function init(root: HTMLElement): void {
       panel.append(element('p', 'egg-star', '★ 收藏册落下一颗星'));
     }
     if (secret.model_url) {
-      panel.append(element('p', 'egg-hint', '第二形态模型将在 T601 接入'));
+      const swapped = watcherSwap(dollId, secret.model_url);
+      panel.append(
+        element(
+          'p',
+          'egg-hint',
+          swapped ? '第二形态已经换上了，转一转看看。' : '第二形态已解锁，去收藏册里看看。',
+        ),
+      );
     }
     const close = element('button', 'egg-close', '收起');
     close.type = 'button';
@@ -472,6 +480,14 @@ function init(root: HTMLElement): void {
     panel.append(close);
     document.body.append(panel);
     updateEggButton();
+  }
+
+  function watcherSwap(dollId: string, modelUrl: string): boolean {
+    try {
+      return window.__wtmSwapModel?.(dollId, modelUrl) ?? false;
+    } catch {
+      return false;
+    }
   }
 
   async function openSecret(): Promise<void> {
