@@ -70,9 +70,12 @@ function init(root: HTMLElement): void {
   const theme = (root.dataset.effect as Theme | undefined) ?? 'starlight';
   const soundEnabled = root.dataset.sound !== '0';
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const autoQuiz = root.dataset.autoQuiz === '1';
 
   let alreadyCollected = COLLECTED_STATES.has(root.dataset.state ?? '');
   let plays = 0;
+  let autoQuizTimer = 0;
+  let autoQuizOpened = false;
   let settled = false;
   let timers: number[] = [];
   let frame = 0;
@@ -332,6 +335,7 @@ function init(root: HTMLElement): void {
   // --- Timeline ---
   function startSequence(): void {
     clearTimers();
+    window.clearTimeout(autoQuizTimer);
     plays += 1;
     telemetry(plays === 1 ? 'egg1_played' : 'egg1_replayed', {
       effect: theme,
@@ -586,6 +590,8 @@ function init(root: HTMLElement): void {
     const dollId = root.dataset.dollId;
     if (!token || !dollId) return;
 
+    window.clearTimeout(autoQuizTimer);
+    autoQuizOpened = true;
     closePanel();
     let riddle: RiddleView | null = null;
     try {
@@ -717,6 +723,19 @@ function init(root: HTMLElement): void {
     playSettle();
     void collect();
     revealEgg();
+
+    // Opt-in (`effects.autoQuiz`): open the optional quiz after the reveal.
+    // The manual "再听听" button stays available either way.
+    if (autoQuiz && !preview && !autoQuizOpened) {
+      const button = root.querySelector<HTMLButtonElement>('.egg-open');
+      if (button && button.dataset.mode !== 'secret') {
+        window.clearTimeout(autoQuizTimer);
+        autoQuizTimer = window.setTimeout(() => {
+          autoQuizOpened = true;
+          void openQuiz();
+        }, 1400);
+      }
+    }
   }
 
   function degrade(): void {

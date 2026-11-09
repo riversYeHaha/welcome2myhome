@@ -7,11 +7,13 @@ export interface CardPageOptions {
   collected: boolean;
   /** Host preview: no progress writes, no collect form. */
   preview?: boolean;
+  /** Effects config: auto-open the egg quiz once E1 settles. */
+  autoQuiz?: boolean;
 }
 
 /** SSR E1 card page: content is complete without JavaScript (no-JS collect form). */
 export function renderCardPage(options: CardPageOptions): string {
-  const { view, token, collected, preview = false } = options;
+  const { view, token, collected, preview = false, autoQuiz = false } = options;
 
   const silhouette = `<div class="silhouette"
     data-doll-id="${escapeHtml(view.doll_id)}"
@@ -45,7 +47,8 @@ export function renderCardPage(options: CardPageOptions): string {
   data-sound="${view.level.e1.sound ? '1' : '0'}"
   data-state="${escapeHtml(view.progress.state)}"
   data-token="${escapeHtml(token)}"
-  data-preview="${preview ? '1' : '0'}">
+  data-preview="${preview ? '1' : '0'}"
+  data-auto-quiz="${autoQuiz && !preview ? '1' : '0'}">
   <p class="eyebrow">拆开一个彩蛋</p>
   ${silhouette}
   <h1>${escapeHtml(view.name)}</h1>

@@ -158,6 +158,7 @@ export async function guestPages(
         view,
         token,
         collected: COLLECTED_STATES.has(progress.state),
+        autoQuiz: options.config.effects.autoQuiz,
       }),
     );
   });

@@ -33,7 +33,8 @@
       60,
       24
     ],
-    "watchdogMs": 300
+    "watchdogMs": 300,
+    "autoQuiz": false
   },
   "generation": {
     "provider": "manual",

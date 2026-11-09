@@ -60,6 +60,8 @@ const ConfigSchema = z
       .object({
         particleTiers: z.array(z.number().int().positive()).length(3),
         watchdogMs: z.number().int().positive(),
+        /** E1 结束后自动弹出彩蛋题（默认关，保留「再听听」手动入口）。 */
+        autoQuiz: z.boolean().default(false),
       })
       .strict(),
     generation: z
