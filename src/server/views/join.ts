@@ -2,6 +2,7 @@ import { escapeHtml, renderPage } from './html';
 
 export interface JoinPageOptions {
   roomCode?: string;
+  shortCode?: string;
   next?: string;
   error?: string;
 }
@@ -18,6 +19,11 @@ export function renderJoinPage(options: JoinPageOptions): string {
       required value="${escapeHtml(options.roomCode ?? '')}" placeholder="426918" />
     <label for="nickname">昵称</label>
     <input id="nickname" name="nickname" maxlength="20" required placeholder="小林" />
+    <label for="short_code">卡片短码（可选）</label>
+    <input id="short_code" name="short_code" inputmode="text" autocomplete="off"
+      pattern="[0-9A-Za-z]{6}" maxlength="6"
+      value="${escapeHtml(options.shortCode ?? '')}" placeholder="4UZRJL" />
+    <p class="hint">没有欢迎码时，输入卡片上的 6 位短码也能直接找到 TA。</p>
     ${options.error ? `<p class="error" role="alert">${escapeHtml(options.error)}</p>` : ''}
     <button type="submit">进入我的家</button>
   </form>

@@ -2,9 +2,10 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AppConfig } from '../config';
 import type { Db } from '../db';
 import { createGuest } from '../db/repos/guests';
-import { getDollByAnyToken } from '../db/repos/dolls';
+import { getDollByAnyToken, getDollByShortCode } from '../db/repos/dolls';
 import { markCollected, upsertDiscovered } from '../db/repos/progress';
-import { getRoomByCode, getRoomById } from '../db/repos/rooms';
+import { getPrimaryRoom, getRoomByCode, getRoomById } from '../db/repos/rooms';
+import { normalizeShortCode } from '../services/cards';
 import { buildE1View } from '../services/play';
 import { readHostSession } from '../services/host-auth';
 import {
@@ -66,6 +67,22 @@ export async function guestPages(
   options: GuestPageOptions,
 ): Promise<void> {
   const deps = { db: options.db, secret: options.secret };
+
+  /**
+   * Welcome-code landing. The printed QR points at `/`, so route it straight to
+   * the join flow (or the collection for a returning guest) instead of serving
+   * the old static skeleton.
+   */
+  app.get('/', async (request, reply) => {
+    const session = readGuestSession(request, deps);
+    if (session) return reply.redirect('/collection');
+
+    const room = getPrimaryRoom(options.db);
+    if (!room) {
+      return sendError(reply, 404, '房间还没有创建', '请让主人先在管理端布置房间。');
+    }
+    return reply.redirect(`/join?r=${encodeURIComponent(room.room_code)}`);
+  });
 
   app.get('/d/:token', async (request, reply) => {
     const { token } = request.params as { token: string };
@@ -200,13 +217,19 @@ export async function guestPages(
     const body = (request.body ?? {}) as Record<string, unknown>;
     const roomCodeRaw = typeof body.room_code === 'string' ? body.room_code.trim() : '';
     const nickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
+    const shortCodeRaw = typeof body.short_code === 'string' ? body.short_code.trim() : '';
     const next = safeNext(body.next);
 
     const joinError = (message: string): FastifyReply =>
       sendHtml(
         reply,
         422,
-        renderJoinPage({ roomCode: roomCodeRaw, next, error: message }),
+        renderJoinPage({
+          roomCode: roomCodeRaw,
+          shortCode: shortCodeRaw,
+          next,
+          error: message,
+        }),
       );
 
     if (!/^\d{6}$/.test(roomCodeRaw)) return joinError('房间码是 6 位数字，再看看门口或餐桌上的欢迎码。');
@@ -218,10 +241,25 @@ export async function guestPages(
       return sendError(reply, 403, '这一局暂时进不来', roomUnavailableMessage(room.status));
     }
 
+    // Optional FR-23 short-code entry: the card's 6 chars stand in for a scan.
+    let shortCodeDoll: ReturnType<typeof getDollByShortCode> = undefined;
+    if (shortCodeRaw.length > 0) {
+      if (!/^[0-9A-Za-z]{6}$/.test(shortCodeRaw)) {
+        return joinError('卡片短码是 6 位字母或数字，再核对一下。');
+      }
+      shortCodeDoll = getDollByShortCode(options.db, normalizeShortCode(shortCodeRaw));
+      if (!shortCodeDoll || shortCodeDoll.room_id !== room.room_id) {
+        return joinError('短码不对，核对一下卡片上的 6 位短码。');
+      }
+    }
+
     const guest = createGuest(options.db, { roomId: room.room_id, nickname });
     const { token } = createGuestSession(options.secret, guest.guest_id, room.room_id);
 
     reply.header('set-cookie', guestCookie(token));
-    return reply.code(303).redirect(next);
+    const target = shortCodeDoll
+      ? `/d/${encodeURIComponent(shortCodeDoll.card_token)}`
+      : next;
+    return reply.code(303).redirect(target);
   });
 }
