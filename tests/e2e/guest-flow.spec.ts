@@ -156,6 +156,12 @@ test('guest scans, collects, reaches the finale and shares a card', async ({
   await page.getByRole('button', { name: '运行自检' }).click();
   await expect(page.getByText('全部检查通过，可以开局。')).toBeVisible();
 
+  // FR-09: server-side PDF is generated from the same print stylesheet.
+  const pdf = await page.context().request.get('/api/cards/pdf');
+  expect(pdf.status()).toBe(200);
+  expect(pdf.headers()['content-type']).toContain('application/pdf');
+  expect((await pdf.body()).subarray(0, 5).toString('utf8')).toBe('%PDF-');
+
   expect(guestErrors.filter((item) => item.includes('Content Security Policy'))).toEqual([]);
   await guest.close();
 });
