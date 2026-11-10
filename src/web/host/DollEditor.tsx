@@ -45,11 +45,47 @@ export function DollEditor({ doll, onSaved, onClose }: DollEditorProps): JSX.Ele
   const [secretStory, setSecretStory] = useState(doll.secret_story);
   const [secretWhisper, setSecretWhisper] = useState(doll.secret_whisper);
   const [secretStar, setSecretStar] = useState(doll.secret_star);
+  const [secretModelUrl, setSecretModelUrl] = useState(doll.secret_model_url);
+  const [secretBusy, setSecretBusy] = useState(false);
+  const [secretNotice, setSecretNotice] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const effectiveEgg = levelType === 'bonus_quiz' && eggEnabled;
+
+  async function uploadSecret(file: File): Promise<void> {
+    setSecretBusy(true);
+    setSecretNotice('');
+    try {
+      const result = await hostApi.uploadSecretModel(doll.doll_id, file);
+      setSecretModelUrl(result.doll.secret_model_url);
+      setSecretNotice(
+        `第二形态已上传：${result.glb.triangles} 个三角面${result.glb.compression === 'draco' ? '（Draco）' : ''}`,
+      );
+      onSaved(result.doll);
+    } catch (reason) {
+      setSecretNotice(reason instanceof Error ? reason.message : '上传失败');
+    } finally {
+      setSecretBusy(false);
+    }
+  }
+
+  async function removeSecret(): Promise<void> {
+    if (!window.confirm('确定移除第二形态模型？答对后将保留基础形态。')) return;
+    setSecretBusy(true);
+    setSecretNotice('');
+    try {
+      const result = await hostApi.deleteSecretModel(doll.doll_id);
+      setSecretModelUrl(result.doll.secret_model_url);
+      setSecretNotice('第二形态模型已移除');
+      onSaved(result.doll);
+    } catch (reason) {
+      setSecretNotice(reason instanceof Error ? reason.message : '移除失败');
+    } finally {
+      setSecretBusy(false);
+    }
+  }
 
   async function save(): Promise<void> {
     if (!name.trim()) {
@@ -334,6 +370,39 @@ export function DollEditor({ doll, onSaved, onClose }: DollEditorProps): JSX.Ele
         />
         收藏册加星
       </label>
+
+      <div className="secret-model">
+        <p className="muted">
+          第二形态 3D 模型（答对后自动换上）：{secretModelUrl ? '已上传' : '未上传'}
+        </p>
+        <div className="row">
+          <label className="upload">
+            {secretBusy ? '处理中…' : '上传第二形态 GLB'}
+            <input
+              type="file"
+              accept=".glb,model/gltf-binary"
+              disabled={secretBusy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void uploadSecret(file);
+              }}
+            />
+          </label>
+          {secretModelUrl ? (
+            <button
+              type="button"
+              className="danger"
+              disabled={secretBusy}
+              onClick={() => void removeSecret()}
+            >
+              移除第二形态
+            </button>
+          ) : null}
+        </div>
+        {secretNotice ? <p className="notice">{secretNotice}</p> : null}
+        <p className="muted small">支持 Draco 压缩 GLB；上传后答对即在同一场景切换。</p>
+      </div>
 
       {error ? <p className="err">{error}</p> : null}
 

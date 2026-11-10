@@ -145,6 +145,16 @@ export const hostApi = {
     return requestMultipart<{ doll: HostDoll }>(`/api/dolls/${dollId}/asset`, form);
   },
   genTask: (taskId: string) => request<{ task: GenTask }>(`/api/gen/${taskId}`),
+  uploadSecretModel: (dollId: string, model: File) => {
+    const form = new FormData();
+    form.append('model', model);
+    return requestMultipart<{
+      doll: HostDoll;
+      glb: { triangles: number; bytes: number; compression: string | null };
+    }>(`/api/dolls/${dollId}/secret-asset`, form);
+  },
+  deleteSecretModel: (dollId: string) =>
+    request<{ doll: HostDoll }>(`/api/dolls/${dollId}/secret-asset`, { method: 'DELETE' }),
   deleteDoll: (dollId: string) =>
     request<void>(`/api/dolls/${dollId}`, { method: 'DELETE' }),
   setStatus: (roomId: string, status: 'live' | 'paused' | 'ended') =>

@@ -1,4 +1,5 @@
-import { createReadStream, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createReadStream, existsSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -14,6 +15,7 @@ import {
   updateDollBasics,
   updateDollLevel,
 } from '../db/repos/dolls';
+import { recordAsset } from '../db/repos/assets';
 import { getGuest } from '../db/repos/guests';
 import { getProgress, upsertDiscovered } from '../db/repos/progress';
 import {
@@ -43,6 +45,7 @@ import {
 import { createDollWithCard, issueBackupToken } from '../services/cards';
 import { clearRoomData, exportConfig, selfCheck } from '../services/ops';
 import { createDollFromPhoto, getGenerationTask, ingestDollModel } from '../services/generation';
+import { validateDollModel } from '../services/glb';
 import { renderCardsPrintPage } from '../views/cards-print';
 import { hashAnswer, normalizeAnswer } from '../services/judge';
 import {
@@ -234,6 +237,18 @@ function taskView(task: {
     error: task.error,
     fallback_used: task.fallback_used === 1,
     provider: task.provider,
+  };
+}
+
+function describeForHost(info: ReturnType<typeof validateDollModel>): {
+  triangles: number;
+  bytes: number;
+  compression: string | null;
+} {
+  return {
+    triangles: info.triangles,
+    bytes: info.bytes,
+    compression: info.compression ?? null,
   };
 }
 
@@ -458,6 +473,61 @@ export async function hostRoutes(
     return { doll: dollView(updated) };
   });
 
+  /** Second-form (E2) GLB upload; validates before writing, never blocks on Blender. */
+  app.post('/api/dolls/:id/secret-asset', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const { file } = await readMultipart(request);
+    if (!file) throw new AppError('VALIDATION_FAILED', 422, '缺少第二形态 GLB 文件');
+
+    const info = validateDollModel(file.buffer);
+    const path = join(options.config.paths.models, `${doll.doll_id}_alt.glb`);
+    writeFileSync(path, file.buffer);
+
+    const allowed = `/assets/models/${doll.doll_id}_alt.glb`;
+    options.db
+      .prepare('UPDATE dolls SET secret_model_url = ?, updated_at = ? WHERE doll_id = ?')
+      .run(allowed, nowIso(), doll.doll_id);
+
+    recordAsset(options.db, {
+      roomId: session.roomId,
+      dollId: doll.doll_id,
+      kind: 'secret_model',
+      path,
+      bytes: file.buffer.length,
+      checksum: createHash('sha256').update(file.buffer).digest('hex'),
+    });
+
+    const updated = getDoll(options.db, doll.doll_id)!;
+    return { doll: dollView(updated), glb: describeForHost(info) };
+  });
+
+  app.delete('/api/dolls/:id/secret-asset', async (request) => {
+    const session = requireHost(request, deps);
+    requireCsrf(request, session, deps);
+
+    const { id } = request.params as { id: string };
+    const doll = getDoll(options.db, id);
+    if (!doll || doll.room_id !== session.roomId) {
+      throw new AppError('NOT_FOUND', 404, '人偶不存在');
+    }
+
+    const path = join(options.config.paths.models, `${doll.doll_id}_alt.glb`);
+    if (existsSync(path)) unlinkSync(path);
+    options.db
+      .prepare('UPDATE dolls SET secret_model_url = NULL, updated_at = ? WHERE doll_id = ?')
+      .run(nowIso(), doll.doll_id);
+
+    return { doll: dollView(getDoll(options.db, doll.doll_id)!) };
+  });
+
   app.post('/api/dolls', async (request) => {
     const session = requireHost(request, deps);
     requireCsrf(request, session, deps);
@@ -582,7 +652,11 @@ export async function hostRoutes(
       maxAttempts,
       answerHash,
       synonymsJson: JSON.stringify(synonyms),
-      secretModelUrl: secret?.model_url || null,
+      // `undefined` keeps the uploaded model; an explicit null clears it.
+      secretModelUrl:
+        secret?.model_url === undefined
+          ? doll.secret_model_url
+          : secret.model_url || null,
       secretStory: secret?.story ?? '',
       secretWhisper: secret?.whisper ?? '',
       secretEffect: secret?.effect ?? 'golden_gather',
