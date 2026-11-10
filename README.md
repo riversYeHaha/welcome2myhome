@@ -43,7 +43,7 @@ npm run test:e2e   # Playwright 手机视口全链路（复用本机 Chrome；CI
   - 客人端入口：`GET /` 按会话直达 join / collection（欢迎码扫进来不再看到骨架页）、`/join` 支持卡片 6 位短码（FR-23）、E1 后答对换第二形态 3D 模型、人偶点触轻跳 + 预设气泡台词；`effects.autoQuiz` 可选自动弹题。
   - E2/终局/收藏：T701–T705、T801–T802、T603（判题、answer/egg start·skip、secret ticket、防爆破、四种终局触发、收藏册与终局页）。
   - 3D 与生成：T601、T1201–T1205（three.js 展柜 + 程序化占位、照片上传 sharp 处理、手动 GLB、Lux3D 图生 3D、GLB 结构校验、Draco 解码、Blender headless 清理/剪影、**串行生成队列 + 重启恢复**、**第二形态 GLB 上传**、**6 套预置人偶兜底**）。
-  - 看板与埋点：T1101–T1103（SSE + 5s 轮询兜底、在线客人、逐卡进度、错误统计、最近动态、JSONL 导出；`events` 表 + 浏览器 telemetry 上报）。
+  - 看板与埋点：T1101–T1103（SSE + 5s 轮询兜底、在线客人、逐卡进度、错误统计、**提示请求计数（FR-31）**、**最近一小时 5 分钟粒度趋势**、最近动态、JSONL 导出；`events` 表 + 浏览器 telemetry 上报）。
   - 运维：FR-01 自检（LAN IP/端口/配置完整性/模型缺失/磁盘可写/AP 隔离提示）、FR-13 备份（SQLite 快照 ×5 + 配置 JSON）与一键清空、FR-12 应急解锁（标记已发现 / 直接开彩蛋）。
   - 分享卡：T803（1080×1440 PNG，已收集名字 + 未收集虚线位）。
   - 安全：FR-47/FR-48（CSP、XFO、COOP、Permissions-Policy、按需 HSTS、CORS 白名单、join/shortcode/卡片按 IP 限流、日志脱敏、X-Request-Id）。

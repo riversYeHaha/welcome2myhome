@@ -3,6 +3,7 @@ import type {
   BoardEventView,
   BoardGuest,
   BoardSnapshot,
+  BoardTimelineBucket,
 } from '../../shared/board';
 import type { ProgressState } from '../../shared/levels';
 import type { Db } from '../db';
@@ -16,6 +17,10 @@ import { sanitizeEventPayload } from '../lib/events';
 export const ONLINE_WINDOW_SEC = 120;
 /** How many recent analytics rows the board shows / exports inline. */
 export const RECENT_EVENT_LIMIT = 40;
+
+/** Live activity chart: the last hour, five-minute buckets (FR-11 / board UI). */
+export const TIMELINE_WINDOW_MIN = 60;
+export const TIMELINE_BUCKET_MIN = 5;
 
 const COLLECTED_STATES: ReadonlySet<ProgressState> = new Set<ProgressState>([
   'collected',
@@ -87,6 +92,7 @@ export function boardSnapshot(db: Db, room: RoomRow): BoardSnapshot {
     eggs: rows.filter((row) => row.state === 'egg_unlocked').length,
     finale: guests.filter((guest) => Boolean(guest.finale_reached_at)).length,
     wrong_attempts: rows.reduce((sum, row) => sum + (row.attempts ?? 0), 0),
+    hint_requests: 0,
   };
 
   const dollStats = new Map<string, BoardDollStats>();
@@ -101,8 +107,30 @@ export function boardSnapshot(db: Db, room: RoomRow): BoardSnapshot {
       egg_unlocked: 0,
       wrong_attempts: 0,
       guests_wrong: 0,
+      hint_requests: 0,
+      hint_guests: 0,
     });
   }
+
+  // FR-31: guests asking for a hint are counted per card for the host.
+  const hintRows = db
+    .prepare(
+      `SELECT doll_id, guest_id, COUNT(*) AS n
+         FROM events
+        WHERE room_id = ? AND type = 'hint_used'
+        GROUP BY doll_id, guest_id`,
+    )
+    .all(room.room_id) as Array<{ doll_id: string | null; guest_id: string | null; n: number }>;
+  for (const hint of hintRows) {
+    totals.hint_requests += hint.n;
+    if (!hint.doll_id) continue;
+    const stats = dollStats.get(hint.doll_id);
+    if (!stats) continue;
+    stats.hint_requests += hint.n;
+    stats.hint_guests += 1;
+  }
+
+  const timeline = buildTimeline(db, room.room_id);
 
   for (const row of rows) {
     const stats = dollStats.get(row.doll_id);
@@ -175,8 +203,67 @@ export function boardSnapshot(db: Db, room: RoomRow): BoardSnapshot {
     generated_at: nowIso(),
     online_window_sec: ONLINE_WINDOW_SEC,
     totals,
+    timeline,
     dolls: dolls.map((doll) => dollStats.get(doll.doll_id)!),
     guests: guestViews,
     recent_events: recent,
   };
+}
+
+function timelineLabel(date: Date): string {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Event counts per five-minute bucket. Derived from `events` so a reconnect
+ * rebuilds the same chart without storing any extra state.
+ */
+function buildTimeline(db: Db, roomId: string): BoardTimelineBucket[] {
+  const bucketMs = TIMELINE_BUCKET_MIN * 60_000;
+  const buckets = Math.ceil(TIMELINE_WINDOW_MIN / TIMELINE_BUCKET_MIN);
+  const now = Date.now();
+  const lastStart = Math.floor(now / bucketMs) * bucketMs;
+  const firstStart = lastStart - (buckets - 1) * bucketMs;
+
+  const empty = (): BoardTimelineBucket => ({
+    start: '',
+    label: '',
+    scanned: 0,
+    collected: 0,
+    eggs: 0,
+    finale: 0,
+  });
+
+  const result: BoardTimelineBucket[] = Array.from({ length: buckets }, (_unused, index) => {
+    const start = new Date(firstStart + index * bucketMs);
+    return {
+      ...empty(),
+      start: start.toISOString(),
+      label: timelineLabel(start),
+    };
+  });
+
+  const since = new Date(firstStart).toISOString();
+  const rows = db
+    .prepare(
+      `SELECT type, created_at FROM events
+        WHERE room_id = ?
+          AND type IN ('card_scanned', 'progress', 'egg2_unlocked', 'finale_reached')
+          AND created_at >= ?`,
+    )
+    .all(roomId, since) as Array<{ type: string; created_at: string }>;
+
+  for (const row of rows) {
+    const at = Date.parse(row.created_at);
+    if (!Number.isFinite(at)) continue;
+    const index = Math.floor((at - firstStart) / bucketMs);
+    const bucket = result[index];
+    if (!bucket) continue;
+    if (row.type === 'card_scanned') bucket.scanned += 1;
+    else if (row.type === 'progress') bucket.collected += 1;
+    else if (row.type === 'egg2_unlocked') bucket.eggs += 1;
+    else if (row.type === 'finale_reached') bucket.finale += 1;
+  }
+
+  return result;
 }

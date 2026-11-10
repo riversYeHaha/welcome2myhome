@@ -178,6 +178,15 @@ describe('host board', () => {
     expect(board.guests[0]!.progress[0]!.attempts).toBe(1);
     expect(board.dolls[0]!.wrong_attempts).toBe(1);
     expect(board.dolls[0]!.guests_wrong).toBe(1);
+
+    // Last-hour chart buckets the scan + collection into the current bucket.
+    const active = board.timeline.filter(
+      (bucket) => bucket.scanned + bucket.collected + bucket.eggs + bucket.finale > 0,
+    );
+    expect(active.length).toBeGreaterThan(0);
+    expect(board.timeline.reduce((sum, bucket) => sum + bucket.scanned, 0)).toBeGreaterThan(0);
+    expect(board.timeline.reduce((sum, bucket) => sum + bucket.collected, 0)).toBeGreaterThan(0);
+    expect(board.timeline).toHaveLength(12);
     expect(board.recent_events.some((event) => event.type === 'answer_submit')).toBe(true);
 
     const serialized = JSON.stringify(board);
@@ -218,6 +227,23 @@ describe('host board', () => {
     expect(played!.payload.first_frame_ms).toBe(420);
     expect(played!.payload.answer).toBeUndefined();
     expect(played!.payload.token).toBeUndefined();
+
+    const hint = await booted.context.app.inject({
+      method: 'POST',
+      url: '/api/play/telemetry',
+      payload: { type: 'hint_used', doll_id: booted.doll.doll_id, payload: { stage: 'quiz' } },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${booted.guestToken}`,
+      },
+    });
+    expect(hint.statusCode).toBe(204);
+
+    const withHints = await readBoard(booted);
+    expect(withHints.totals.hint_requests).toBe(1);
+    expect(withHints.dolls[0]!.hint_requests).toBe(1);
+    expect(withHints.dolls[0]!.hint_guests).toBe(1);
+    expect(withHints.recent_events.some((event) => event.type === 'hint_used')).toBe(true);
 
     const rejected = await booted.context.app.inject({
       method: 'POST',

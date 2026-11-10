@@ -637,6 +637,8 @@ function init(root: HTMLElement): void {
     hintButton.addEventListener('click', () => {
       hintText.hidden = false;
       hintButton.hidden = true;
+      // FR-31: the host board counts on-site hint requests per card.
+      telemetry('hint_used', { stage: 'quiz' });
     });
     const attempts = element('p', 'egg-feedback', '');
     const actions = element('div', 'egg-actions');

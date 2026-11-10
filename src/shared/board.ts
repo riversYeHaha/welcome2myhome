@@ -19,7 +19,10 @@ export interface BoardSnapshot {
     eggs: number;
     finale: number;
     wrong_attempts: number;
+    hint_requests: number;
   };
+  /** Last hour in 5-minute buckets, for the live activity chart. */
+  timeline: BoardTimelineBucket[];
   dolls: BoardDollStats[];
   guests: BoardGuest[];
   recent_events: BoardEventView[];
@@ -39,6 +42,9 @@ export interface BoardDollStats {
   egg_unlocked: number;
   wrong_attempts: number;
   guests_wrong: number;
+  /** FR-31: guests asking for a hint on this card. */
+  hint_requests: number;
+  hint_guests: number;
 }
 
 export interface BoardGuestProgress {
@@ -60,6 +66,16 @@ export interface BoardGuest {
   eggs: number;
   wrong_attempts: number;
   progress: BoardGuestProgress[];
+}
+
+export interface BoardTimelineBucket {
+  /** Bucket start, ISO (local server time labels below). */
+  start: string;
+  label: string;
+  scanned: number;
+  collected: number;
+  eggs: number;
+  finale: number;
 }
 
 export interface BoardEventView {

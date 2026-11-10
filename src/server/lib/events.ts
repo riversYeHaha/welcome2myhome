@@ -27,6 +27,7 @@ export const SERVER_EVENT_TYPES = [
 export const CLIENT_EVENT_TYPES = [
   'egg1_played',
   'egg1_replayed',
+  'hint_used',
   'session_complete',
   'network_error',
 ] as const;

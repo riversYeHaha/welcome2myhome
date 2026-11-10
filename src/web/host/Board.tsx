@@ -18,6 +18,7 @@ const EVENT_LABEL: Record<string, string> = {
   progress: '进度更新',
   egg_challenge_started: '开始答题',
   answer_submit: '提交答案',
+  hint_used: '请求提示',
   egg2_unlocked: '解开彩蛋',
   egg1_played: '看完 E1',
   egg1_replayed: '重播 E1',
@@ -43,6 +44,7 @@ function eventText(event: BoardEventView): string {
     return `${who} 提交答案（${correct ? '答对' : '答错'}）${doll}`;
   }
   if (event.type === 'guest_join') return `${who} 进来了`;
+  if (event.type === 'hint_used') return `${who} 请求了提示${doll}`;
   if (event.type === 'finale_reached' || event.type === 'session_complete') return `${who} ${label}`;
   return `${who} ${label}${doll}`;
 }
@@ -161,6 +163,7 @@ export function Board({ roomId, status }: { roomId: string; status: RoomStatus }
             <Stat label="彩蛋解锁" value={totals!.eggs} />
             <Stat label="达成终局" value={totals!.finale} />
             <Stat label="答错次数" value={totals!.wrong_attempts} />
+            <Stat label="提示请求" value={totals!.hint_requests} />
           </div>
 
           <h3>客人</h3>
@@ -210,6 +213,7 @@ export function Board({ roomId, status }: { roomId: string; status: RoomStatus }
               <span>收藏</span>
               <span>答题</span>
               <span>答错</span>
+              <span>提示</span>
             </div>
             {snapshot.dolls.map((doll) => (
               <div className="board-row" role="row" key={doll.doll_id}>
@@ -226,8 +230,66 @@ export function Board({ roomId, status }: { roomId: string; status: RoomStatus }
                   {doll.wrong_attempts}
                   {doll.guests_wrong > 0 ? `（${doll.guests_wrong} 人）` : ''}
                 </span>
+                <span className={doll.hint_requests > 0 ? 'warn' : 'muted'}>
+                  {doll.hint_requests}
+                  {doll.hint_guests > 0 ? `（${doll.hint_guests} 人）` : ''}
+                </span>
               </div>
             ))}
+          </div>
+
+          <h3>最近一小时</h3>
+          <div className="timeline">
+            {(() => {
+              const max = Math.max(
+                1,
+                ...snapshot.timeline.map(
+                  (bucket) => bucket.scanned + bucket.collected + bucket.eggs + bucket.finale,
+                ),
+              );
+              return (
+                <div className="timeline-bars">
+                  {snapshot.timeline.map((bucket, index) => {
+                    const segments = [
+                      { key: 'scanned', value: bucket.scanned },
+                      { key: 'collected', value: bucket.collected },
+                      { key: 'eggs', value: bucket.eggs },
+                      { key: 'finale', value: bucket.finale },
+                    ];
+                    const total = segments.reduce((sum, item) => sum + item.value, 0);
+                    return (
+                      <div
+                        className="timeline-col"
+                        key={bucket.start}
+                        title={`${bucket.label} · 扫卡 ${bucket.scanned} · 收藏 ${bucket.collected} · 彩蛋 ${bucket.eggs} · 终局 ${bucket.finale}`}
+                      >
+                        <div
+                          className="timeline-bar"
+                          style={{
+                            height: `${Math.max(total > 0 ? 6 : 0, Math.round((total / max) * 72))}px`,
+                          }}
+                        >
+                          {segments.map((segment) => (
+                            <i
+                              key={segment.key}
+                              className={`seg ${segment.key}`}
+                              style={{ flexGrow: segment.value }}
+                            />
+                          ))}
+                        </div>
+                        <span>{index % 3 === 0 ? bucket.label : ''}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            <p className="muted small">
+              每 5 分钟一格：<i className="dot scanned" /> 扫卡
+              <i className="dot collected" /> 收藏
+              <i className="dot eggs" /> 彩蛋
+              <i className="dot finale" /> 终局
+            </p>
           </div>
 
           <h3>最近动态</h3>
