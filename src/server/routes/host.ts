@@ -34,7 +34,7 @@ import { nowIso } from '../lib/ids';
 import { parseBody } from '../lib/http';
 import { readMultipart } from '../lib/multipart';
 import { LoginThrottle } from '../lib/login-throttle';
-import { detectLanIp } from '../lib/network';
+import { detectLanIp, publicHost } from '../lib/network';
 import { isUniqueViolation } from '../lib/sqlite';
 import {
   FinaleInputSchema,
@@ -42,12 +42,13 @@ import {
   eggQuizDollCount,
   parseFinaleConfig,
 } from '../services/finale';
-import { createDollWithCard, issueBackupToken } from '../services/cards';
+import { cardUrl, createDollWithCard, issueBackupToken, qrPng, welcomeUrl } from '../services/cards';
 import { clearRoomData, exportConfig, selfCheck } from '../services/ops';
 import { createDollFromPhoto, getGenerationTask, ingestDollModel } from '../services/generation';
 import { validateDollModel } from '../services/glb';
 import type { GenerationQueue } from '../services/gen-queue';
 import { renderCardsPrintPage } from '../views/cards-print';
+import { renderPdfFromHtml } from '../services/print-pdf';
 import { hashAnswer, normalizeAnswer } from '../services/judge';
 import {
   clearSessionCookie,
@@ -422,6 +423,39 @@ export async function hostRoutes(
       .type('text/html; charset=utf-8')
       .header('cache-control', 'no-store')
       .send(renderCardsPrintPage(roomView(room), dolls));
+  });
+
+  /** FR-09: server-side A4 PDF via headless Chrome (same stylesheet as print). */
+  app.get('/api/cards/pdf', async (request, reply) => {
+    const session = requireHost(request, deps);
+    const room = getRoomById(options.db, session.roomId);
+    if (!room) throw new AppError('ROOM_NOT_FOUND', 404, '房间不存在');
+
+    const rows = listDolls(options.db, session.roomId);
+    const host = publicHost(room, request.hostname);
+    const asDataUrl = (png: Buffer): string =>
+      `data:image/png;base64,${png.toString('base64')}`;
+
+    const dollQr: Record<string, string> = {};
+    for (const doll of rows) {
+      dollQr[doll.doll_id] = asDataUrl(await qrPng(cardUrl(room, doll.card_token, host)));
+    }
+
+    const html = renderCardsPrintPage(
+      roomView(room),
+      rows.map(dollView),
+      {
+        forPdf: true,
+        qr: { welcome: asDataUrl(await qrPng(welcomeUrl(room, host))), dolls: dollQr },
+      },
+    );
+    const pdf = await renderPdfFromHtml(options.config, html);
+
+    return reply
+      .type('application/pdf')
+      .header('cache-control', 'no-store')
+      .header('content-disposition', `attachment; filename="cards-${room.room_code}.pdf"`)
+      .send(pdf);
   });
 
   app.get('/api/gen/:taskId', async (request) => {

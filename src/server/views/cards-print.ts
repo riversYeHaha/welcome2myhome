@@ -39,18 +39,30 @@ function renderCard(card: PrintCard): string {
  * A4 print sheet: 2 × 2 cards per page, 80 × 120 mm each. This is the K6
  * fallback (browser print) and intentionally avoids bundled fonts/PDF deps.
  */
-export function renderCardsPrintPage(room: HostRoom, dolls: HostDoll[]): string {
+export interface CardsPrintOptions {
+  /** Pre-rendered QR data URLs; defaults to the public PNG endpoints. */
+  qr?: { welcome?: string; dolls?: Record<string, string> };
+  /** Self-contained document (no toolbar/scripts) for server-side PDF. */
+  forPdf?: boolean;
+}
+
+export function renderCardsPrintPage(
+  room: HostRoom,
+  dolls: HostDoll[],
+  options: CardsPrintOptions = {},
+): string {
+  const { qr = {}, forPdf = false } = options;
   const cards: PrintCard[] = [
     {
       kind: 'welcome',
-      qrUrl: '/api/cards/welcome.png',
+      qrUrl: qr.welcome ?? '/api/cards/welcome.png',
       shortCode: room.room_code,
       clue: '',
     },
     ...dolls.map(
       (doll): PrintCard => ({
         kind: 'doll',
-        qrUrl: `/api/cards/${encodeURIComponent(doll.doll_id)}/qr.png`,
+        qrUrl: qr.dolls?.[doll.doll_id] ?? `/api/cards/${encodeURIComponent(doll.doll_id)}/qr.png`,
         shortCode: doll.short_code,
         clue: doll.clue,
       }),
@@ -147,15 +159,19 @@ ${page.map(renderCard).join('\n')}
 </style>
 </head>
 <body>
-  <div class="toolbar">
+  ${
+    forPdf
+      ? ''
+      : `<div class="toolbar">
     <div>
       <strong>卡片打印预览</strong>
       <p>${lanHint}</p>
     </div>
     <button type="button" id="print-button">打印 / 另存为 PDF</button>
-  </div>
+  </div>`
+  }
   ${pages}
-  <script type="module" src="/print.js"></script>
+  ${forPdf ? '' : '<script type="module" src="/print.js"></script>'}
 </body>
 </html>`;
 }

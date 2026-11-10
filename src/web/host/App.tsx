@@ -327,6 +327,9 @@ export function App(): JSX.Element {
             >
               打印卡片
             </a>
+            <a className="button ghost" href="/api/cards/pdf">
+              下载 PDF
+            </a>
             {canLive ? (
               <button type="button" disabled={busy} onClick={() => void act(() => hostApi.setStatus(room.room_id, 'live'), '已开局')}>
                 开局 / 继续
