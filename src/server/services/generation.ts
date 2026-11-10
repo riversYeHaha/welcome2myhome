@@ -15,6 +15,7 @@ import { recordAsset } from '../db/repos/assets';
 import { createGenTask, getGenTask, updateGenTask } from '../db/repos/gen';
 import { getDoll, setDollGeneration } from '../db/repos/dolls';
 import type { DollRow, GenTaskRow } from '../db/rows';
+import type { GenerationQueue } from './gen-queue';
 import { AppError } from '../lib/errors';
 import { cleanDollModel } from './blender';
 import { createDollWithCard } from './cards';
@@ -75,6 +76,8 @@ export async function normalizePhoto(input: Buffer): Promise<NormalizedPhoto> {
 }
 
 export interface CreateDollFromPhotoInput {
+  /** When provided, Lux3D work goes through the serial queue instead of starting inline. */
+  queue?: GenerationQueue;
   roomId: string;
   name: string;
   tagline?: string;
@@ -441,6 +444,17 @@ export async function createDollFromPhoto(
   if (config.generation.provider === 'lux3d') {
     const client = createLux3DClient(config);
     if (client) {
+      if (input.queue) {
+        const queued = updateGenTask(db, task.task_id, {
+          status: 'queued',
+          stage: 'queued',
+          percent: 5,
+          error: null,
+        });
+        input.queue.enqueue(task.task_id);
+        return { doll: updatedDoll ?? doll, task: queued ?? task };
+      }
+
       const running = updateGenTask(db, task.task_id, {
         status: 'running',
         stage: 'uploading_image',

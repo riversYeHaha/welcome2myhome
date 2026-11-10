@@ -46,6 +46,7 @@ import { createDollWithCard, issueBackupToken } from '../services/cards';
 import { clearRoomData, exportConfig, selfCheck } from '../services/ops';
 import { createDollFromPhoto, getGenerationTask, ingestDollModel } from '../services/generation';
 import { validateDollModel } from '../services/glb';
+import type { GenerationQueue } from '../services/gen-queue';
 import { renderCardsPrintPage } from '../views/cards-print';
 import { hashAnswer, normalizeAnswer } from '../services/judge';
 import {
@@ -63,6 +64,8 @@ export interface HostRouteOptions {
   db: Db;
   secret: Buffer;
   hub: BoardHub;
+  /** Serial Lux3D queue (tech design §5.7). */
+  genQueue: GenerationQueue;
 }
 
 const PinSchema = z.string().regex(/^\d{4,8}$/, 'PIN 必须是 4–8 位数字');
@@ -449,6 +452,7 @@ export async function hostRoutes(
     const result = await createDollFromPhoto(options.db, options.config, {
       roomId: session.roomId,
       name,
+      queue: options.genQueue,
       tagline: fields.tagline?.trim() || undefined,
       photo: file.buffer,
     });

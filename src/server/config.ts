@@ -74,6 +74,8 @@ const ConfigSchema = z
         faceCount: z.number().int().min(10_000).max(300_000).default(300_000),
         enablePbr: z.boolean().default(true),
         pollIntervalMs: z.number().int().min(200).max(10_000).default(2_000),
+        /** Serial generation queue width (tech design §5.7 recommends 1). */
+        concurrency: z.number().int().min(1).max(4).default(1),
         blenderEnabled: z.boolean(),
         blenderPath: z.string(),
         timeoutSec: z.number().int().positive(),

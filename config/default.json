@@ -45,7 +45,8 @@
     "pollIntervalMs": 2000,
     "blenderEnabled": false,
     "blenderPath": "",
-    "timeoutSec": 300
+    "timeoutSec": 300,
+    "concurrency": 1
   },
   "cards": {
     "page": "A4",

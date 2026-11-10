@@ -12,6 +12,7 @@ import type { AppConfig } from './config';
 import type { Db } from './db';
 import { AppError } from './lib/errors';
 import { createBoardHub } from './lib/events';
+import { createGenerationQueue } from './services/gen-queue';
 import { buildLoggerOptions } from './lib/logger';
 import { registerSecurityHooks } from './lib/security';
 import { assetRoutes } from './routes/assets';
@@ -104,9 +105,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   const boardHub = createBoardHub();
+  // Serial generation queue; `recover()` re-queues tasks interrupted by a restart.
+  const genQueue = createGenerationQueue({ db, config, log: app.log });
+  const recovered = genQueue.recover();
+  if (recovered > 0) {
+    app.log.info({ recovered }, 'generation tasks requeued from previous run');
+  }
 
   await app.register(healthRoutes, { version });
-  await app.register(hostRoutes, { config, db, secret, hub: boardHub });
+  await app.register(hostRoutes, { config, db, secret, hub: boardHub, genQueue });
   await app.register(cardRoutes, { db });
   await app.register(playRoutes, { config, db, secret, hub: boardHub });
   await app.register(guestPages, { config, db, secret });
